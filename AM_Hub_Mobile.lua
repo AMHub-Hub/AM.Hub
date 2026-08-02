@@ -1,42 +1,79 @@
-f _G.XION_Script_Loaded then
-    _G.XION_Execution_Count = (_G.XION_Execution_Count or 0) + 1
+-- ========================================
+-- AM脚本 修整版 - 黑色外框 + 彩虹色
+-- ========================================
+
+if _G.AM_Script_Loaded then
+    _G.AM_Execution_Count = (_G.AM_Execution_Count or 0) + 1
     return
 end
 
-_G.XION_Script_Loaded = true
-_G.XION_Execution_Count = 1
+_G.AM_Script_Loaded = true
+_G.AM_Execution_Count = 1
 
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+-- ========== 稳定加载 WindUI ==========
+local WindUI
+local success, err = pcall(function()
+    WindUI = loadstring(game:HttpGet("https://cdn.jsdelivr.net/gh/Footagesus/WindUI@main/main.lua"))()
+end)
+if not success then
+    warn("WindUI加载失败，尝试备用源...")
+    WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/main.lua"))()
+end
+
+-- ========== 彩虹色生成函数 ==========
+local function RainbowColor()
+    local hue = tick() % 5 / 5
+    return Color3.fromHSV(hue, 1, 1)
+end
+
+-- ========== 创建窗口 ==========
 local Window = WindUI:CreateWindow({
     Title = "AM脚本",
     Icon = "crown",
     Author = "AM官方制作",
     AuthorImage = 90840643379863,
-    Folder = "CloudHub",
+    Folder = "AMHub",
     Size = UDim2.fromOffset(560, 360),
-    Transparent = true,
+    Transparent = false,
+    BackgroundColor = Color3.fromRGB(10, 10, 10),  -- 黑色背景
+    BorderColor = Color3.fromRGB(255, 0, 0),        -- 初始红色外框
     User = {
         Enabled = true,
         Callback = function() 
-            print("clicked") 
+            print("AM脚本 - 用户按钮点击") 
         end,
         Anonymous = false
     },
 })
 
+-- 彩虹边框动画
+spawn(function()
+    while _G.AM_Script_Loaded do
+        pcall(function()
+            Window:SetBorderColor(RainbowColor())
+        end)
+        wait(0.1)
+    end
+end)
+
+-- 编辑打开按钮（彩虹色）
 Window:EditOpenButton({
     Title = "AM",
     Icon = "crown",
     CornerRadius = UDim.new(1, 0),
     StrokeThickness = 3,
     Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(144, 238, 144)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 0))
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 128, 0)),
+        ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 255, 0)),
+        ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0, 255, 0)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0, 0, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 255)),
     }),
     Draggable = true
 })
 
-
+-- ========== 封装函数 ==========
 function Tab(a)
     return Window:Tab({Title = a, Icon = "eye"})
 end
@@ -57,43 +94,15 @@ function Dropdown(a, b, c, d, e)
     return a:Dropdown({Title = b, Values = c, Value = d, Callback = e})
 end
 
-function Input(a, b, c, d, e, f)
-    return a:Input({
-        Title = b,
-        Desc = c or "",
-        Value = d or "",
-        Placeholder = e or "",
-        Callback = f
-    })
+-- ========== 获取玩家（安全方式） ==========
+local player = game.Players.LocalPlayer
+local function GetHumanoid()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:WaitForChild("Humanoid")
 end
 
+-- ========== 首页 Tab ==========
 local Taba = Tab("首页")
-local Tab1 = Tab("通用")
-local TabFE = Tab("FE")
-local Tabzj = Tab("自己搞的一些小玩意")
-local Tabyl = Tab("娱乐")
-local Tab2 = Tab("ESP")
-local Tab3 = Tab("自瞄")
-local Tab4 = Tab("子追")
-local Tabc = Tab("范围")
-local Tabjb = Tab("各大脚本")
-local Tab5 = Tab("力量传奇")
-local Tab6 = Tab("忍者传奇")
-local Tab7 = Tab("极速传奇")
-local Tab8 = Tab("墨水游戏")
-local Tab9 = Tab("FPS：S")
-local Tab10 = Tab("破坏者谜团")
-local Tab11 = Tab("监狱人生")
-local Tab12 = Tab("最强战场")
-local Tab13 = Tab("99夜")
-local Tab14 = Tab("doors")
-local Tab15 = Tab("死铁轨")
-local Tab16 = Tab("EVADE")
-local Tab17 = Tab("锻造厂")
-local Tabd = Tab("催更地点")
-local Tabb = Tab("设置")
-
-local player = game.Players.LocalPlayer
 
 Taba:Paragraph({
     Title = "系统信息",
@@ -104,150 +113,164 @@ Taba:Paragraph({
     Color = Color3.fromHex("#0099FF")
 })
 
-local fpsCounter = 0
-local fpsLastTime = tick()
+-- FPS 计数器（实时更新）
 local fpsText = "计算中..."
-
 spawn(function()
-    while wait() do
-        fpsCounter += 1
-        
-        if tick() - fpsLastTime >= 1 then
-            fpsText = string.format("%.1f FPS", fpsCounter) -- 显示一位小数
-            fpsCounter = 0
-            fpsLastTime = tick()
+    local counter = 0
+    local lastTime = tick()
+    while _G.AM_Script_Loaded do
+        counter += 1
+        if tick() - lastTime >= 1 then
+            fpsText = string.format("%.1f FPS", counter)
+            counter = 0
+            lastTime = tick()
         end
+        wait()
+    end
+end)
+
+-- 每2秒刷新性能信息
+spawn(function()
+    while _G.AM_Script_Loaded do
+        wait(2)
+        pcall(function()
+            Taba:Paragraph({
+                Title = "性能信息",
+                Desc = "帧率: " .. fpsText,
+                Image = "bar-chart",
+                ImageSize = 20,
+                Color = Color3.fromHex("#00A2FF")
+            })
+        end)
     end
 end)
 
 Taba:Paragraph({
-    Title = "性能信息",
-    Desc = "帧率: " .. fpsText,
-    Image = "bar-chart",
-    ImageSize = 20,
-    Color = Color3.fromHex("#00A2FF")
-})
-
-Taba:Paragraph({
-    Title = "AM温馨提示：玩挂要有心，不要乱打人❤️",
+    Title = "AM温馨提示：玩挂要有心，不要乱打人",
     Desc = [[ ]],
-    Image = "eye",
+    Image = "heart",
     ImageSize = 24,
-    Color = Color3.fromHex("#FFFFFF"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
+    Color = Color3.fromHex("#FF69B4"),
+    BackgroundTransparency = 0.3,
+    OutlineColor = RainbowColor(),
+    OutlineThickness = 2,
     Padding = UDim.new(0, 1)
 })
 
 Taba:Paragraph({
     Title = "最大贡献者：AM独自制作",
     Desc = [[Cappo]],
-    Image = "eye",
+    Image = "star",
     ImageSize = 24,
-    Color = Color3.fromHex("#FFFFFF"),
-    BackgroundTransparency = 1,
+    Color = Color3.fromHex("#FFD700"),
+    BackgroundTransparency = 0.3,
     OutlineColor = Color3.fromHex("#FFFFFF"),
     OutlineThickness = 1,
     Padding = UDim.new(0, 1)
 })
 
-Taba:Paragraph({
-    Title = "我不回消息，偶然，此脚本不买，倒卖s妈",
-    Desc = [[ ]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundColor3 = Color3.fromHex("#000000"),
-    BackgroundTransparency = 0.2,
-    OutlineColor = Color3.fromHex("#000000"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-Taba:Paragraph({
-    Title = "我的脚本是缝合脚本，大家就当通用的啦😘",
-    Desc = [[ ]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-
-Button(Tab1, "复制QQ群[获取最新消息]", function()
-    setclipboard("179051448")
-end)
+-- ========== 通用 Tab（全部带开关） ==========
+local Tab1 = Tab("通用")
 
 Tab1:Paragraph({
-    Title = "以下是常用的",
-    Desc = [[ 👇👇👇]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
+    Title = "通用功能",
+    Desc = [[以下功能均可开关]],
+    Image = "settings",
+    ImageSize = 20,
+    Color = Color3.fromHex("#FFFFFF")
 })
 
-Button(Tab1, "Adonis管理系统反作弊绕过", function() 
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua'))()
+-- 移动速度（Toggle + Slider 联动）
+local speedEnabled = false
+local speedValue = 16
+
+Toggle(Tab1, "启用移动速度修改", false, function(val)
+    speedEnabled = val
+    local hum = GetHumanoid()
+    hum.WalkSpeed = val and speedValue or 16
 end)
 
-Slider(Tab1, "移动速度", 1, 600, game.Players.LocalPlayer.Character.Humanoid.WalkSpeed, function(a) 
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = a
+Slider(Tab1, "移动速度值", 1, 600, 16, function(val)
+    speedValue = val
+    if speedEnabled then
+        pcall(function() GetHumanoid().WalkSpeed = val end)
+    end
 end)
 
-Slider(Tab1, "跳跃高度", 1, 600, game.Players.LocalPlayer.Character.Humanoid.JumpPower, function(a) 
-        game.Players.LocalPlayer.Character.Humanoid.JumpPower = a
+-- 跳跃高度（Toggle + Slider 联动）
+local jumpEnabled = false
+local jumpValue = 50
+
+Toggle(Tab1, "启用跳跃高度修改", false, function(val)
+    jumpEnabled = val
+    local hum = GetHumanoid()
+    hum.JumpPower = val and jumpValue or 50
 end)
 
-Slider(Tab1, "重力设置", 1, 500, workspace.Gravity, function(a) 
-        workspace.Gravity = a
+Slider(Tab1, "跳跃高度值", 1, 600, 50, function(val)
+    jumpValue = val
+    if jumpEnabled then
+        pcall(function() GetHumanoid().JumpPower = val end)
+    end
 end)
 
-Button(Tab1, "锁视角", function() 
-    local ShiftlockStarterGui = Instance.new("ScreenGui")
-local ImageButton = Instance.new("ImageButton")
-ShiftlockStarterGui.Name = "Shiftlock (StarterGui)"
-ShiftlockStarterGui.Parent = game.CoreGui
-ShiftlockStarterGui.ZIndexBehavior =  Enum.ZIndexBehavior.Sibling
-ShiftlockStarterGui.ResetOnSpawn = false
+-- 重力（Toggle + Slider 联动）
+local gravityEnabled = false
+local gravityValue = 196.2
 
-ImageButton.Parent = ShiftlockStarterGui
-ImageButton.Active = true
-ImageButton.Draggable = true
-ImageButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ImageButton.BackgroundTransparency = 1.000
-ImageButton.Position = UDim2.new(0.921914339, 0, 0.552375436, 0)
-ImageButton.Size = UDim2.new(0.0636147112, 0, 0.0661305636, 0)
-ImageButton.SizeConstraint = Enum.SizeConstraint.RelativeXX
-ImageButton.Image = "http://www.roblox.com/asset/?id=182223762"
-local function TLQOYN_fake_script()
-    local script = Instance.new("LocalScript", ImageButton)
+Toggle(Tab1, "启用重力修改", false, function(val)
+    gravityEnabled = val
+    workspace.Gravity = val and gravityValue or 196.2
+end)
 
-    local MobileCameraFramework = {}
-    local Players = game.Players
-    local runservice = game:GetService("RunService")
-    local CAS = game:GetService("ContextActionService")
-    local Player = Players.LocalPlayer
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    local root = character:WaitForChild("HumanoidRootPart")
-    local humanoid = character.Humanoid
-    local camera = workspace.CurrentCamera
-    local button = script.Parent
-    uis = game:GetService("UserInputService")
-    ismobile = uis.TouchEnabled
-    button.Visible = ismobile
-    
-    local states = {
-        OFF = "rbxasset://textures/ui/mouseLock_off@2x.png",
-        ON = "rbxasset://textures/ui/mouseLock_on@2x.png"
-    }
-    local MAX_LENGTH = 900000
-    local active = false
-    local ENABLED_OFFSET = CFrame.new(1.7, 0, 0)
-    local DISABLED_OFFSET = CFrame.new(-1.7, 0, 0)
-local rootPos = Vect
+Slider(Tab1, "重力值", 1, 500, 196, function(val)
+    gravityValue = val
+    if gravityEnabled then
+        workspace.Gravity = val
+    end
+end)
+
+-- 无限跳（Toggle）
+Toggle(Tab1, "无限跳", false, function(val)
+    _G.AM_InfiniteJump = val
+    if val then
+        local hum = GetHumanoid()
+        hum.Jumping:Connect(function()
+            if _G.AM_InfiniteJump then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end
+end)
+
+-- 穿墙（Toggle）
+Toggle(Tab1, "穿墙", false, function(val)
+    _G.AM_Noclip = val
+    if val then
+        spawn(function()
+            while _G.AM_Noclip and _G.AM_Script_Loaded do
+                pcall(function()
+                    local char = player.Character
+                    if char then
+                        for _, part in pairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                part.CanCollide = false
+                            end
+                        end
+                    end
+                end)
+                wait(0.1)
+            end
+        end)
+    end
+end)
+
+-- 飞行（Toggle - 简单版）
+Toggle(Tab1, "飞行", false, function(val)
+    _G.AM_Fly = val
+    local hum = GetHumanoid()
+    if val then
+        hum.PlatformStand = true
+        local bv = Instance.new("BodyVelocity")
+        bv.Name = "AM_FlyForce"
+        bv.MaxForce = V
