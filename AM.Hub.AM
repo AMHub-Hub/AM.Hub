@@ -1,0 +1,214 @@
+-- AM Hub v2.0 - 极简稳定版
+if _G.AM_L then return end
+_G.AM_L = true
+
+-- 加载WindUI
+local W
+local ok = pcall(function()
+    W = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/main.lua"))()
+end)
+if not ok or not W then
+    game.StarterGui:SetCore("SendNotification", {Title = "AM", Text = "WindUI加载失败", Duration = 5})
+    _G.AM_L = nil
+    return
+end
+
+-- 创建窗口
+local Win = W:CreateWindow({
+    Title = "AM Hub",
+    Icon = "crown",
+    Author = "AM官方制作",
+    Folder = "AMHub",
+    Size = UDim2.fromOffset(480, 560),
+    Transparent = false,
+    BackgroundColor = Color3.fromRGB(15, 15, 15),
+    User = {Enabled = true, Callback = function() end, Anonymous = false}
+})
+
+-- 彩虹边框
+spawn(function()
+    while _G.AM_L do
+        pcall(function()
+            Win:SetBorderColor(Color3.fromHSV(tick() % 5 / 5, 1, 1))
+        end)
+        wait(0.15)
+    end
+end)
+
+-- 打开按钮
+Win:EditOpenButton({
+    Title = "AM",
+    Icon = "crown",
+    CornerRadius = UDim.new(1, 0),
+    StrokeThickness = 3,
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,255,0)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0,0,255))
+    }),
+    Draggable = true
+})
+
+-- 工具函数
+local plr = game.Players.LocalPlayer
+local function GChar() return plr.Character or plr.CharacterAdded:Wait() end
+local function GHum()
+    local c = GChar()
+    return c:FindFirstChildWhichIsA("Humanoid") or c:WaitForChild("Humanoid", 5)
+end
+local function GHRP()
+    local c = GChar()
+    return c:FindFirstChild("HumanoidRootPart") or c:WaitForChild("HumanoidRootPart", 5)
+end
+
+-- 缓存原值
+local orig = {}
+local cached = false
+local function Cache()
+    if cached then return end
+    pcall(function()
+        local h = GHum()
+        if h then orig.W = h.WalkSpeed; orig.J = h.JumpPower end
+        orig.G = workspace.Gravity
+        cached = true
+    end)
+end
+
+-- 创建Tab
+local T1 = Win:Tab({Title = "通用", Icon = "settings"})
+local T2 = Win:Tab({Title = "视觉", Icon = "eye"})
+local T3 = Win:Tab({Title = "ESP", Icon = "eye"})
+local T4 = Win:Tab({Title = "设置", Icon = "settings"})
+
+-- ===== 通用 =====
+T1:Paragraph({
+    Title = "玩家: " .. plr.Name .. " | ID: " .. plr.UserId,
+    Desc = "账号年龄: " .. plr.AccountAge .. "天 | QQ群: 179051448",
+    Color = Color3.fromHex("#00CCFF")
+})
+
+-- 移速
+local spdOn, spdVal = false, 16
+T1:Toggle({Title = "启用移速修改", Value = false, Callback = function(v)
+    Cache()
+    spdOn = v
+    pcall(function() GHum().WalkSpeed = v and spdVal or (orig.W or 16) end)
+end})
+T1:Slider({Title = "移速值", Min = 1, Max = 600, Default = 16, Callback = function(v)
+    spdVal = v
+    if spdOn then pcall(function() GHum().WalkSpeed = v end) end
+end})
+
+-- 跳力
+local jmpOn, jmpVal = false, 50
+T1:Toggle({Title = "启用跳力修改", Value = false, Callback = function(v)
+    Cache()
+    jmpOn = v
+    pcall(function() GHum().JumpPower = v and jmpVal or (orig.J or 50) end)
+end})
+T1:Slider({Title = "跳力值", Min = 1, Max = 600, Default = 50, Callback = function(v)
+    jmpVal = v
+    if jmpOn then pcall(function() GHum().JumpPower = v end) end
+end})
+
+-- 重力
+local grvOn, grvVal = false, 196
+T1:Toggle({Title = "启用重力修改", Value = false, Callback = function(v)
+    Cache()
+    grvOn = v
+    workspace.Gravity = v and grvVal or (orig.G or 196.2)
+end})
+T1:Slider({Title = "重力值", Min = 1, Max = 500, Default = 196, Callback = function(v)
+    grvVal = v
+    if grvOn then workspace.Gravity = v end
+end})
+
+-- 飞行
+local flyC, flyBV, flyBG
+T1:Toggle({Title = "飞行模式", Value = false, Callback = function(v)
+    if v then
+        local hrp = GHRP()
+        if not hrp then return end
+        flyBV = Instance.new("BodyVelocity", hrp)
+        flyBV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+        flyBV.Velocity = Vector3.zero
+        flyBG = Instance.new("BodyGyro", hrp)
+        flyBG.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+        flyBG.P = 3000
+        pcall(function() GHum().PlatformStand = true end)
+        local cam = workspace.CurrentCamera
+        local uis = game:GetService("UserInputService")
+        flyC = game:GetService("RunService").Heartbeat:Connect(function()
+            if not flyBV or not flyBV.Parent then return end
+            local m = Vector3.zero
+            if uis:IsKeyDown(Enum.KeyCode.W) then m = m + cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.S) then m = m - cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.A) then m = m - cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.D) then m = m + cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.Space) then m = m + Vector3.new(0, 1, 0) end
+            if uis:IsKeyDown(Enum.KeyCode.LeftShift) then m = m - Vector3.new(0, 1, 0) end
+            flyBG.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
+            flyBV.Velocity = (m.Magnitude > 0 and m.Unit or Vector3.zero) * 50
+        end)
+    else
+        if flyC then pcall(function() flyC:Disconnect() end) flyC = nil end
+        if flyBV then pcall(function() flyBV:Destroy() end) flyBV = nil end
+        if flyBG then pcall(function() flyBG:Destroy() end) flyBG = nil end
+        pcall(function() GHum().PlatformStand = false end)
+    end
+end})
+
+-- 穿墙
+local ncC, ncO = nil, {}
+T1:Toggle({Title = "穿墙模式", Value = false, Callback = function(v)
+    if v then
+        local c = GChar()
+        for _, p in pairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then ncO[p] = p.CanCollide; p.CanCollide = false end
+        end
+        ncC = game:GetService("RunService").Stepped:Connect(function()
+            for p, _ in pairs(ncO) do
+                if p and p.Parent then p.CanCollide = false end
+            end
+        end)
+    else
+        if ncC then pcall(function() ncC:Disconnect() end) ncC = nil end
+        for p, ov in pairs(ncO) do
+            if p and p.Parent then p.CanCollide = ov end
+        end
+        ncO = {}
+    end
+end})
+
+-- 无限跳
+local ijC
+T1:Toggle({Title = "无限跳跃", Value = false, Callback = function(v)
+    if v then
+        ijC = game:GetService("UserInputService").JumpRequest:Connect(function()
+            pcall(function()
+                local h = GHum()
+                if h and h:GetState() ~= Enum.HumanoidStateType.Dead then
+                    h:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        end)
+    else
+        if ijC then pcall(function() ijC:Disconnect() end) ijC = nil end
+    end
+end})
+
+-- ===== 视觉 =====
+T2:Slider({Title = "FOV视野", Min = 50, Max = 120, Default = 70, Callback = function(v)
+    pcall(function() workspace.CurrentCamera.FieldOfView = v end)
+end})
+
+T2:Toggle({Title = "夜视模式", Value = false, Callback = function(v)
+    if v then
+        spawn(function()
+            while v and _G.AM_L do
+                pcall(function()
+                    local L = game:GetService("Lighting")
+                    L.Ambient = Color3.fromRGB(150, 150, 150)
+                    L.Brightness = 2
+                end)
+              
