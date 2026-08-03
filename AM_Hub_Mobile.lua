@@ -1,253 +1,435 @@
-if _G.XION_Script_Loaded then
-    _G.XION_Execution_Count = (_G.XION_Execution_Count or 0) + 1
-    return
+--// AM Hub | XK Style | Full Source
+--// Made by AM Official | QQ Group: 179051448
+
+if _G.AM_HUB_LOADED then return end
+_G.AM_HUB_LOADED = true
+
+--// Services
+local Players = game:GetService("Players")
+local RS = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local WS = workspace
+
+local LP = Players.LocalPlayer
+local Char = LP.Character or LP.CharacterAdded:Wait()
+local Hum = Char:WaitForChild("Humanoid")
+local HRP = Char:WaitForChild("HumanoidRootPart")
+
+--// State
+local S = {
+    Fly = false, Noclip = false, InfJump = false,
+    ESP = false, Aimbot = false, XRay = false,
+    SpeedVal = 16, JumpVal = 50, GravVal = 196,
+    FlySpeed = 60, AimRange = 200,
+    BV = nil, BG = nil, Conns = {}
+}
+
+--// GUI
+local Screen = Instance.new("ScreenGui", game.CoreGui)
+Screen.Name = "AM_Hub_GUI"
+Screen.ResetOnSpawn = false
+Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Main Frame
+local Main = Instance.new("Frame", Screen)
+Main.Size = UDim2.new(0, 520, 0, 360)
+Main.Position = UDim2.new(0.5, -260, 0.5, -180)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+
+-- Top Bar
+local Top = Instance.new("Frame", Main)
+Top.Size = UDim2.new(1, 0, 0, 32)
+Top.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+Top.BorderSizePixel = 0
+Instance.new("UICorner", Top).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel", Top)
+Title.Size = UDim2.new(0.6, 0, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.Text = "AM Hub | 通用"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.BackgroundTransparency = 1
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local CloseBtn = Instance.new("TextButton", Top)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 1)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.MouseButton1Click:Connect(function()
+    Screen:Destroy()
+    _G.AM_HUB_LOADED = false
+end)
+
+-- Left Tab Bar
+local TabBar = Instance.new("Frame", Main)
+TabBar.Size = UDim2.new(0, 120, 1, -36)
+TabBar.Position = UDim2.new(0, 0, 0, 34)
+TabBar.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+TabBar.BorderSizePixel = 0
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 10)
+
+-- Content Area
+local Content = Instance.new("ScrollingFrame", Main)
+Content.Position = UDim2.new(0, 130, 0, 38)
+Content.Size = UDim2.new(1, -140, 1, -46)
+Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ScrollBarThickness = 4
+Content.CanvasSize = UDim2.new(0, 0, 0, 600)
+
+local UIList = Instance.new("UIListLayout", Content)
+UIList.Padding = UDim.new(0, 6)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+
+--// Helper Functions
+local function CreateTab(name, ypos)
+    local btn = Instance.new("TextButton", TabBar)
+    btn.Size = UDim2.new(1, -16, 0, 30)
+    btn.Position = UDim2.new(0, 8, 0, ypos)
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    btn.MouseButton1Click:Connect(function()
+        Title.Text = "AM Hub | " .. name
+    end)
+    return btn
 end
 
-_G.XION_Script_Loaded = true
-_G.XION_Execution_Count = 1
-
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-local Window = WindUI:CreateWindow({
-    Title = "AM脚本",
-    Icon = "crown",
-    Author = "AM官方制作",
-    AuthorImage = 90840643379863,
-    Folder = "CloudHub",
-    Size = UDim2.fromOffset(560, 360),
-    Transparent = true,
-    User = {
-        Enabled = true,
-        Callback = function() 
-            print("clicked") 
-        end,
-        Anonymous = false
-    },
-})
-
-Window:EditOpenButton({
-    Title = "AM",
-    Icon = "crown",
-    CornerRadius = UDim.new(1, 0),
-    StrokeThickness = 3,
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(144, 238, 144)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 0))
-    }),
-    Draggable = true
-})
-
-
-function Tab(a)
-    return Window:Tab({Title = a, Icon = "eye"})
+local function CreateToggle(parent, text, ypos, callback)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(1, -10, 0, 32)
+    btn.Position = UDim2.new(0, 5, 0, ypos)
+    btn.Text = text .. ": OFF"
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    local state = false
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.Text = text .. (state and ": ON" or ": OFF")
+        btn.BackgroundColor3 = state and Color3.fromRGB(50, 120, 50) or Color3.fromRGB(35, 35, 40)
+        callback(state, btn)
+    end)
+    return btn
 end
 
-function Button(a, b, c)
-    return a:Button({Title = b, Callback = c})
+local function CreateSlider(parent, text, ypos, min, max, default, callback)
+    local frame = Instance.new("Frame", parent)
+    frame.Size = UDim2.new(1, -10, 0, 50)
+    frame.Position = UDim2.new(0, 5, 0, ypos)
+    frame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    frame.BorderSizePixel = 0
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
+    local label = Instance.new("TextLabel", frame)
+    label.Size = UDim2.new(1, -10, 0, 20)
+    label.Position = UDim2.new(0, 5, 0, 2)
+    label.Text = text .. ": " .. default
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 11
+    label.BackgroundTransparency = 1
+
+    local slider = Instance.new("TextButton", frame)
+    slider.Size = UDim2.new(1, -10, 0, 16)
+    slider.Position = UDim2.new(0, 5, 0, 28)
+    slider.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    slider.Text = ""
+    Instance.new("UICorner", slider).CornerRadius = UDim.new(0, 8)
+
+    local fill = Instance.new("Frame", slider)
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(80, 160, 255)
+    fill.BorderSizePixel = 0
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 8)
+
+    local dragging = false
+    slider.MouseButton1Down:Connect(function() dragging = true end)
+    UIS.MouseButton1Up:Connect(function() dragging = false end)
+    RS.RenderStepped:Connect(function()
+        if dragging then
+            local mp = UIS:GetMouseLocation()
+            local sp = slider.AbsolutePosition
+            local sz = slider.AbsoluteSize
+            local pct = math.clamp((mp.X - sp.X) / sz.X, 0, 1)
+            fill.Size = UDim2.new(pct, 0, 1, 0)
+            local val = math.floor(min + pct * (max - min))
+            label.Text = text .. ": " .. val
+            callback(val)
+        end
+    end)
 end
 
-function Toggle(a, b, c, d)
-    return a:Toggle({Title = b, Value = c, Callback = d})
+local function CreateButton(parent, text, ypos, callback)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(1, -10, 0, 30)
+    btn.Position = UDim2.new(0, 5, 0, ypos)
+    btn.Text = text
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    btn.MouseButton1Click:Connect(function() callback(btn) end)
 end
 
-function Slider(a, b, c, d, e, f)
-    return a:Slider({Title = b, Step = 1, Value = {Min = c, Max = d, Default = e}, Callback = f})
-end
+--// Tabs
+CreateTab("通用", 10)
+CreateTab("视觉", 45)
+CreateTab("ESP", 80)
+CreateTab("自瞄", 115)
+CreateTab("玩家", 150)
+CreateTab("设置", 185)
 
-function Dropdown(a, b, c, d, e)
-    return a:Dropdown({Title = b, Values = c, Value = d, Callback = e})
-end
+--// 通用 Tab Content
+CreateToggle(Content, "飞行", 5, function(v)
+    S.Fly = v
+    if v then
+        S.BV = Instance.new("BodyVelocity", HRP)
+        S.BV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+        S.BG = Instance.new("BodyGyro", HRP)
+        S.BG.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+        Hum.PlatformStand = true
+        S.Conns.Fly = RS.Heartbeat:Connect(function()
+            local D = Vector3.zero
+            if UIS:IsKeyDown(Enum.KeyCode.W) then D += WS.CurrentCamera.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then D -= WS.CurrentCamera.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then D -= WS.CurrentCamera.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then D += WS.CurrentCamera.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then D += Vector3.new(0, 1, 0) end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then D -= Vector3.new(0, 1, 0) end
+            S.BG.CFrame = CFrame.new(HRP.Position, HRP.Position + WS.CurrentCamera.CFrame.LookVector)
+            S.BV.Velocity = (D.Magnitude > 0 and D.Unit or Vector3.zero) * S.FlySpeed
+        end)
+    else
+        if S.Conns.Fly then S.Conns.Fly:Disconnect() end
+        if S.BV then S.BV:Destroy() end
+        if S.BG then S.BG:Destroy() end
+        Hum.PlatformStand = false
+    end
+end)
 
-function Input(a, b, c, d, e, f)
-    return a:Input({
-        Title = b,
-        Desc = c or "",
-        Value = d or "",
-        Placeholder = e or "",
-        Callback = f
-    })
-end
+CreateToggle(Content, "穿墙", 45, function(v)
+    S.Noclip = v
+    if v then
+        S.Conns.Noclip = RS.Stepped:Connect(function()
+            for _, p in pairs(Char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end)
+    else
+        if S.Conns.Noclip then S.Conns.Noclip:Disconnect() end
+    end
+end)
 
-local Taba = Tab("首页")
-local Tab1 = Tab("通用")
-local TabFE = Tab("FE")
-local Tabzj = Tab("自己搞的一些小玩意")
-local Tabyl = Tab("娱乐")
-local Tab2 = Tab("ESP")
-local Tab3 = Tab("自瞄")
-local Tab4 = Tab("子追")
-local Tabc = Tab("范围")
-local Tabjb = Tab("各大脚本")
-local Tab5 = Tab("力量传奇")
-local Tab6 = Tab("忍者传奇")
-local Tab7 = Tab("极速传奇")
-local Tab8 = Tab("墨水游戏")
-local Tab9 = Tab("FPS：S")
-local Tab10 = Tab("破坏者谜团")
-local Tab11 = Tab("监狱人生")
-local Tab12 = Tab("最强战场")
-local Tab13 = Tab("99夜")
-local Tab14 = Tab("doors")
-local Tab15 = Tab("死铁轨")
-local Tab16 = Tab("EVADE")
-local Tab17 = Tab("锻造厂")
-local Tabd = Tab("催更地点")
-local Tabb = Tab("设置")
+CreateToggle(Content, "无限跳", 85, function(v)
+    S.InfJump = v
+    if v then
+        S.Conns.IJ = UIS.JumpRequest:Connect(function()
+            if Hum:GetState() ~= Enum.HumanoidStateType.Dead then
+                Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    else
+        if S.Conns.IJ then S.Conns.IJ:Disconnect() end
+    end
+end)
 
-local player = game.Players.LocalPlayer
+CreateSlider(Content, "移速", 130, 16, 600, 16, function(v)
+    S.SpeedVal = v
+    Hum.WalkSpeed = v
+end)
 
-Taba:Paragraph({
-    Title = "系统信息",
-    Desc = string.format("用户名: %s\n显示名: %s\n用户ID: %d\n账号年龄: %d天", 
-        player.Name, player.DisplayName, player.UserId, player.AccountAge),
-    Image = "info",
-    ImageSize = 20,
-    Color = Color3.fromHex("#0099FF")
-})
+CreateSlider(Content, "跳力", 190, 50, 600, 50, function(v)
+    S.JumpVal = v
+    Hum.JumpPower = v
+end)
 
-local fpsCounter = 0
-local fpsLastTime = tick()
-local fpsText = "计算中..."
+CreateSlider(Content, "重力", 250, 1, 500, 196, function(v)
+    S.GravVal = v
+    WS.Gravity = v
+end)
 
-spawn(function()
-    while wait() do
-        fpsCounter += 1
-        
-        if tick() - fpsLastTime >= 1 then
-            fpsText = string.format("%.1f FPS", fpsCounter) -- 显示一位小数
-            fpsCounter = 0
-            fpsLastTime = tick()
+CreateSlider(Content, "飞行速度", 310, 10, 500, 60, function(v)
+    S.FlySpeed = v
+end)
+
+--// 视觉 Tab Content
+CreateToggle(Content, "夜视", 370, function(v)
+    game:GetService("Lighting").Brightness = v and 5 or 2
+end)
+
+CreateToggle(Content, "去雾", 410, function(v)
+    game:GetService("Lighting").FogEnd = v and 999999 or 1000
+end)
+
+CreateToggle(Content, "全图明亮", 450, function(v)
+    game:GetService("Lighting").Ambient = v and Color3.new(1,1,1) or Color3.new(0,0,0)
+end)
+
+CreateSlider(Content, "FOV", 490, 50, 120, 70, function(v)
+    WS.CurrentCamera.FieldOfView = v
+end)
+
+--// ESP Tab Content
+CreateToggle(Content, "名称ESP", 550, function(v)
+    S.ESP = v
+    if v then
+        S.Conns.ESP = RS.RenderStepped:Connect(function()
+            for _, pl in pairs(Players:GetPlayers()) do
+                if pl ~= LP and pl.Character and pl.Character:FindFirstChild("Head") then
+                    local tag = "ESP_" .. pl.Name
+                    if not game.CoreGui:FindFirstChild(tag) then
+                        local bb = Instance.new("BillboardGui", game.CoreGui)
+                        bb.Name = tag
+                        bb.Adornee = pl.Character.Head
+                        bb.Size = UDim2.new(0, 100, 0, 20)
+                        bb.AlwaysOnTop = true
+                        local tl = Instance.new("TextLabel", bb)
+                        tl.Size = UDim2.new(1, 0, 1, 0)
+                        tl.BackgroundTransparency = 1
+                        tl.TextColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+                        tl.TextScaled = true
+                        tl.Text = pl.Name
+                    end
+                end
+            end
+        end)
+    else
+        if S.Conns.ESP then S.Conns.ESP:Disconnect() end
+        for _, g in pairs(game.CoreGui:GetChildren()) do
+            if g.Name:match("^ESP_") then g:Destroy() end
         end
     end
 end)
 
-Taba:Paragraph({
-    Title = "性能信息",
-    Desc = "帧率: " .. fpsText,
-    Image = "bar-chart",
-    ImageSize = 20,
-    Color = Color3.fromHex("#00A2FF")
-})
-
-Taba:Paragraph({
-    Title = "AM温馨提示：玩挂要有心，不要乱打人❤️",
-    Desc = [[ ]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#FFFFFF"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-
-Taba:Paragraph({
-    Title = "最大贡献者：AM独自制作",
-    Desc = [[Cappo]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#FFFFFF"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-
-Taba:Paragraph({
-    Title = "我不回消息，偶然，此脚本不买，倒卖s妈",
-    Desc = [[ ]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundColor3 = Color3.fromHex("#000000"),
-    BackgroundTransparency = 0.2,
-    OutlineColor = Color3.fromHex("#000000"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-Taba:Paragraph({
-    Title = "我的脚本是缝合脚本，大家就当通用的啦😘",
-    Desc = [[ ]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-
-Button(Tab1, "复制QQ群[获取最新消息]", function()
-    setclipboard("179051448")
+CreateToggle(Content, "透视XRay", 590, function(v)
+    S.XRay = v
+    if v then
+        S.Conns.XRay = RS.RenderStepped:Connect(function()
+            for _, p in pairs(WS:GetDescendants()) do
+                if p:IsA("BasePart") and p.Parent ~= Char then
+                    p.LocalTransparencyModifier = 0.5
+                end
+            end
+        end)
+    else
+        if S.Conns.XRay then S.Conns.XRay:Disconnect() end
+    end
 end)
 
-Tab1:Paragraph({
-    Title = "以下是常用的",
-    Desc = [[ 👇👇👇]],
-    Image = "eye",
-    ImageSize = 24,
-    Color = Color3.fromHex("#000000"),
-    BackgroundTransparency = 1,
-    OutlineColor = Color3.fromHex("#FFFFFF"),
-    OutlineThickness = 1,
-    Padding = UDim.new(0, 1)
-})
-
-Button(Tab1, "Adonis管理系统反作弊绕过", function() 
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua'))()
+--// 自瞄 Tab Content
+CreateToggle(Content, "自瞄", 650, function(v)
+    S.Aimbot = v
+    if v then
+        S.Conns.Aim = RS.RenderStepped:Connect(function()
+            local target = nil
+            local dist = math.huge
+            for _, pl in pairs(Players:GetPlayers()) do
+                if pl ~= LP and pl.Character and pl.Character:FindFirstChild("Head") then
+                    local d = (pl.Character.Head.Position - HRP.Position).Magnitude
+                    if d < S.AimRange and d < dist then
+                        dist = d
+                        target = pl.Character.Head
+                    end
+                end
+            end
+            if target then
+                WS.CurrentCamera.CFrame = CFrame.new(WS.CurrentCamera.CFrame.Position, target.Position)
+            end
+        end)
+    else
+        if S.Conns.Aim then S.Conns.Aim:Disconnect() end
+    end
 end)
 
-Slider(Tab1, "移动速度", 1, 600, game.Players.LocalPlayer.Character.Humanoid.WalkSpeed, function(a) 
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = a
+CreateSlider(Content, "自瞄范围", 690, 10, 1000, 200, function(v)
+    S.AimRange = v
 end)
 
-Slider(Tab1, "跳跃高度", 1, 600, game.Players.LocalPlayer.Character.Humanoid.JumpPower, function(a) 
-        game.Players.LocalPlayer.Character.Humanoid.JumpPower = a
+--// 玩家 Tab Content
+CreateButton(Content, "传送至鼠标", 750, function()
+    local mp = UIS:GetMouseLocation()
+    local ray = WS.CurrentCamera:ScreenPointToRay(mp.X, mp.Y)
+    local hit = WS:Raycast(ray.Origin, ray.Direction * 1000)
+    if hit then
+        HRP.CFrame = CFrame.new(hit.Position + Vector3.new(0, 5, 0))
+    end
 end)
 
-Slider(Tab1, "重力设置", 1, 500, workspace.Gravity, function(a) 
-        workspace.Gravity = a
+CreateButton(Content, "坐下", 790, function()
+    Hum:ChangeState(Enum.HumanoidStateType.Seated)
 end)
 
-Button(Tab1, "锁视角", function() 
-    local ShiftlockStarterGui = Instance.new("ScreenGui")
-local ImageButton = Instance.new("ImageButton")
-ShiftlockStarterGui.Name = "Shiftlock (StarterGui)"
-ShiftlockStarterGui.Parent = game.CoreGui
-ShiftlockStarterGui.ZIndexBehavior =  Enum.ZIndexBehavior.Sibling
-ShiftlockStarterGui.ResetOnSpawn = false
+CreateButton(Content, "跳一下", 830, function()
+    Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+end)
 
-ImageButton.Parent = ShiftlockStarterGui
-ImageButton.Active = true
-ImageButton.Draggable = true
-ImageButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ImageButton.BackgroundTransparency = 1.000
-ImageButton.Position = UDim2.new(0.921914339, 0, 0.552375436, 0)
-ImageButton.Size = UDim2.new(0.0636147112, 0, 0.0661305636, 0)
-ImageButton.SizeConstraint = Enum.SizeConstraint.RelativeXX
-ImageButton.Image = "http://www.roblox.com/asset/?id=182223762"
-local function TLQOYN_fake_script()
-    local script = Instance.new("LocalScript", ImageButton)
+--// 设置 Tab Content
+CreateButton(Content, "复制QQ群: 179051448", 890, function()
+    pcall(function() setclipboard("179051448") end)
+end)
 
-    local MobileCameraFramework = {}
-    local Players = game.Players
-    local runservice = game:GetService("RunService")
-    local CAS = game:GetService("ContextActionService")
-    local Player = Players.LocalPlayer
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    local root = character:WaitForChild("HumanoidRootPart")
-    local humanoid = character.Humanoid
-    local camera = workspace.CurrentCamera
-    local button = script.Parent
-    uis = game:GetService("UserInputService")
-    ismobile = uis.TouchEnabled
-    button.Visible = ismobile
-    
-    local states = {
-        OFF = "rbxasset://textures/ui/mouseLock_off@2x.png",
-        ON = "rbxasset://textures/ui/mouseLock_on@2x.png"
-    }
-    local MAX_LENGTH = 900000
-    local active = false
-    local ENABLED_OFFSET = CFrame.new(1.7, 0, 0)
-    local DISABLED_OFFSET = CFrame.new(-1.7, 0, 0)
-local rootPos = Vector3.new(0,0,0)
+CreateToggle(Content, "全局总开关", 930, function(v)
+    if not v then
+        -- 关所有
+        for k, conn in pairs(S.Conns) do
+            if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+        end
+        S.Conns = {}
+        if S.BV then S.BV:Destroy() end
+        if S.BG then S.BG:Destroy() end
+        Hum.WalkSpeed = 16
+        Hum.JumpPower = 50
+        WS.Gravity = 196
+        for _, g in pairs(game.CoreGui:GetChildren()) do
+            if g.Name:match("^ESP_") then g:Destroy() end
+        end
+    end
+end)
+
+CreateButton(Content, "销毁脚本", 970, function()
+    Screen:Destroy()
+    _G.AM_HUB_LOADED = false
+    for k, conn in pairs(S.Conns) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+end)
+
+--// Floating Button
+local Float = Instance.new("TextButton", Screen)
+Float.Size = UDim2.new(0, 52, 0, 52)
+Float.Position = UDim2.new(1, -62, 1, -62)
+Float.Text = "AM"
+Float.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+Float.TextColor3 = Color3.new(1, 1, 1)
+Float.Font = Enum.Font.GothamBlack
+Float.TextSize = 15
+Float.Draggable = true
+Instance.new("UICorner", Float).CornerRadius = UDim.new(1, 0)
+Float.MouseButton1Click:Connect(function()
+    Main.Visible = not Main.Visible
+end)
+
+spawn(function()
+    while _G.AM_HUB_LOADED do
+        pcall(function()
+            Float.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+        end)
+        wait(0.1)
+    end
+end)
+
+print("[AM Hub] Loaded | XK Style | Made by AM Official")
