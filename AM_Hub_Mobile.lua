@@ -1,242 +1,155 @@
---[[
-    ============================================
-    AM拦截诬陷脚本 · 本地隐私保护版
-    ============================================
-    功能：隐藏全服玩家头顶名牌/血条/称号
-    用途：防止被诬陷团队截图人肉、录屏自保
-    注意：本脚本仅本地生效，无法阻止他人扫描
-    作者：AM制作
-    ============================================
-]]
+--=====================================================
+--  AM · 硬核扫描拦截器 v2.0
+--  拦截：GetPlayers / HttpGet( badges&games API ) / Player属性
+--  ⚠ 仅限 Alt 小号测试 ⚠
+--  群号: QQ17395735636   ← 改成你的
+--=====================================================
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
-local UIS = game:GetService("UserInputService")
 
--- ========== 配置区 ==========
-local CONFIG = {
-    GroupNumber   = "QQ17395735636",       -- ← 改成你的群号
-    GuiName       = "AM_Intercept",
-    Title         = "AM拦截诬陷脚本",
-    Version       = "v1.0",
-    ScanInterval  = 3,                -- 定期检查新生成头顶GUI的间隔(秒)
-}
--- ============================
+-- ==================== UI ====================
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = "AM_HardBlock"
+gui.ResetOnSpawn = false
 
--- 防止重复加载
-if _G.AM_Intercept_Loaded then return end
-_G.AM_Intercept_Loaded = true
+local f = Instance.new("Frame", gui)
+f.Size = UDim2.new(0,260,0,230)
+f.Position = UDim2.new(0.5,-130,0.5,-115)
+f.BackgroundColor3 = Color3.fromRGB(10,10,15)
+f.BorderColor3 = Color3.fromRGB(255,40,40)
+f.BorderSizePixel = 2
+f.Active = true; f.Draggable = true
 
--- 判断是否为头顶名牌类GUI
-local function isNameTag(gui)
-    local n = gui.Name:lower()
-    return (n:find("name") or n:find("tag") or n:find("overhead")
-         or n:find("badge") or n:find("title") or n:find("label")
-         or n:find("display") or n:find("head") or n:find("top")
-         or n:find("billboard") or n:find("nick"))
-end
+local t = Instance.new("TextLabel",f)
+t.Size=UDim2.new(1,0,0,30); t.BackgroundColor3=Color3.fromRGB(180,20,20)
+t.Text="AM·硬核扫描拦截器 v2"; t.TextColor3=Color3.new(1,1,1)
+t.TextScaled=true; t.Font=Enum.Font.SourceSansBold
 
--- 对单个角色执行隐藏/恢复
-local function applyToCharacter(char, state)
-    if not char then return end
+local grp = Instance.new("TextLabel",f)
+grp.Size=UDim2.new(1,0,0,20); grp.Position=UDim2.new(0,0,0,30)
+grp.BackgroundTransparency=1; grp.Text="群号: 123456789"
+grp.TextColor3=Color3.fromRGB(255,200,200); grp.TextScaled=true
 
-    -- Humanoid 头顶名 & 血条
-    local hum = char:FindFirstChildWhichIsA("Humanoid")
-    if hum then
-        if state then
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            hum.NameDisplayDistance = 0
-            hum.HealthDisplayDistance = 0
-        else
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-            hum.NameDisplayDistance = 100
-            hum.HealthDisplayDistance = 100
-        end
-    end
+local st = Instance.new("TextLabel",f)
+st.Size=UDim2.new(1,0,0,22); st.Position=UDim2.new(0,0,0,55)
+st.BackgroundTransparency=1; st.Text="● 未启动"
+st.TextColor3=Color3.fromRGB(255,100,100); st.TextScaled=true
 
-    -- 遍历所有子孙：BillboardGui / SurfaceGui / TextLabel
-    for _, g in ipairs(char:GetDescendants()) do
-        if (g:IsA("BillboardGui") or g:IsA("SurfaceGui")) and isNameTag(g) then
-            g.Enabled = not state
-        elseif g:IsA("TextLabel") and isNameTag(g) then
-            -- 部分服把名字做成 TextLabel 挂在 Head 上
-            if state then
-                g.TextTransparency = 1
-                g.BackgroundTransparency = 1
-            else
-                g.TextTransparency = 0
-                g.BackgroundTransparency = 0
-            end
-        end
-    end
-end
+local btn = Instance.new("TextButton",f)
+btn.Size=UDim2.new(0.8,0,0,45); btn.Position=UDim2.new(0.1,0,0,90)
+btn.BackgroundColor3=Color3.fromRGB(200,40,40)
+btn.Text="▶ 启动硬核拦截"; btn.TextColor3=Color3.new(1,1,1)
+btn.TextScaled=true; btn.Font=Enum.Font.SourceSansBold
 
--- ========== 创建悬浮窗 UI ==========
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = CONFIG.GuiName
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = CoreGui
+local lg = Instance.new("TextLabel",f)
+lg.Size=UDim2.new(1,-10,0,22); lg.Position=UDim2.new(0,5,0,145)
+lg.BackgroundTransparency=1; lg.Text="拦截: 0 | API: 0 | 属性: 0"
+lg.TextColor3=Color3.fromRGB(180,180,180); lg.TextScaled=true; lg.TextWrapped=true
 
--- 主面板
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 240, 0, 200)
-Main.Position = UDim2.new(0.5, -120, 0.5, -100)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-Main.BorderSizePixel = 2
-Main.BorderColor3 = Color3.fromRGB(0, 200, 255)
-Main.Active = true
-Main.Draggable = true
-Main.Parent = ScreenGui
+local note = Instance.new("TextLabel",f)
+note.Size=UDim2.new(1,-10,0,40); note.Position=UDim2.new(0,5,0,170)
+note.BackgroundTransparency=1
+note.Text="仅保护本机客户端\n诬陷党换机器/换号仍会扫描他人"
+note.TextColor3=Color3.fromRGB(120,120,120); note.TextScaled=true
 
--- 顶部标题栏
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 32)
-TitleBar.BackgroundColor3 = Color3.fromRGB(0, 160, 220)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = Main
-
-local TitleText = Instance.new("TextLabel")
-TitleText.Size = UDim2.new(1, -10, 1, 0)
-TitleText.Position = UDim2.new(0, 5, 0, 0)
-TitleText.BackgroundTransparency = 1
-TitleText.Text = CONFIG.Title .. " " .. CONFIG.Version
-TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleText.TextScaled = true
-TitleText.Font = Enum.Font.SourceSansBold
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-TitleText.Parent = TitleBar
-
--- 群号显示
-local GroupLabel = Instance.new("TextLabel")
-GroupLabel.Size = UDim2.new(1, 0, 0, 24)
-GroupLabel.Position = UDim2.new(0, 0, 0, 36)
-GroupLabel.BackgroundTransparency = 1
-GroupLabel.Text = "群号: " .. CONFIG.GroupNumber
-GroupLabel.TextColor3 = Color3.fromRGB(150, 210, 255)
-GroupLabel.TextScaled = true
-GroupLabel.Font = Enum.Font.SourceSans
-GroupLabel.Parent = Main
-
--- 说明文字
-local Desc = Instance.new("TextLabel")
-Desc.Size = UDim2.new(1, -10, 0, 36)
-Desc.Position = UDim2.new(0, 5, 0, 60)
-Desc.BackgroundTransparency = 1
-Desc.Text = "自动检测并隐藏玩家头顶名牌\n防止被诬陷团队截图利用"
-Desc.TextColor3 = Color3.fromRGB(180, 180, 180)
-Desc.TextScaled = true
-Desc.Font = Enum.Font.SourceSans
-Desc.TextWrapped = true
-Desc.Parent = Main
-
--- 状态指示
-local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, 0, 0, 22)
-Status.Position = UDim2.new(0, 0, 0, 100)
-Status.BackgroundTransparency = 1
-Status.Text = "● 未启动"
-Status.TextColor3 = Color3.fromRGB(255, 80, 80)
-Status.TextScaled = true
-Status.Font = Enum.Font.SourceSansBold
-Status.Parent = Main
-
--- 启动按钮
-local Btn = Instance.new("TextButton")
-Btn.Size = UDim2.new(0.8, 0, 0, 42)
-Btn.Position = UDim2.new(0.1, 0, 0, 130)
-Btn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-Btn.Text = "▶ 启动拦截"
-Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-Btn.TextScaled = true
-Btn.Font = Enum.Font.SourceSansBold
-Btn.Parent = Main
-
--- 最小化按钮
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.new(0, 28, 0, 28)
-MinBtn.Position = UDim2.new(1, -30, 0, 2)
-MinBtn.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
-MinBtn.Text = "—"
-MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinBtn.TextScaled = true
-MinBtn.Font = Enum.Font.SourceSansBold
-MinBtn.Parent = TitleBar
-
--- ========== 逻辑 ==========
+-- ==================== 拦截核心 ====================
 local Running = false
-local connList = {}
+local C = {total=0, api=0, attr=0}
 
-local function applyAll(state)
-    for _, p in ipairs(Players:GetPlayers()) do
-        pcall(function() applyToCharacter(p.Character, state) end)
+-- 假数据池
+local FAKES = {"Noob_001","Guest_xx","TestAcc_7","Player_42","Unknown_X"}
+local fi = 0
+local function fakeN() fi=(fi%#FAKES)+1; return FAKES[fi] end
+
+-- 备份
+local oldHttpGet = game.HttpGet
+local oldHttpPost = game.HttpPost
+local oldGetPlrs = Players.GetPlayers
+
+-- Hook 1: HttpGet —— 拦 Roblox 数据 API + 外部上报
+local function hkHttpGet(self, url, ...)
+    local u = tostring(url or ""):lower()
+    -- 拦勋章 / 游戏历史 / 用户资料 这三类
+    if u:find("badges.roblox.com")
+    or u:find("games.roblox.com")
+    or u:find("users.roblox.com")
+    or u:find("inventory.roblox.com") then
+        C.api += 1; C.total += 1
+        lg.Text = string.format("拦截: %d | API: %d | 属性: %d",C.total,C.api,C.attr)
+        -- 返回空 data，让扫描脚本拿到"这人啥也没有"
+        return '{"data":[]}'
     end
+    -- 拦向他们自己后台的上报（非 roblox/github 的 POST/GET）
+    if u:find("http") and not u:find("roblox.com") and not u:find("github.com") and not u:find("raw.githubusercontent") then
+        C.api += 1; C.total += 1
+        lg.Text = string.format("拦截: %d | API: %d | 属性: %d",C.total,C.api,C.attr)
+        return ""
+    end
+    return oldHttpGet(self, url, ...)
 end
 
--- 启动
-local function startIntercept()
-    Running = true
-    applyAll(true)
-    Status.Text = "● 拦截中"
-    Status.TextColor3 = Color3.fromRGB(80, 255, 120)
-    Btn.Text = "■ 停止拦截"
-    Btn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-    print("[AM拦截诬陷脚本] 已启动 - 头顶名牌已隐藏")
+-- Hook 2: HttpPost 一律拦（他们上报用）
+local function hkHttpPost(self, url, data, ...)
+    local u = tostring(url or ""):lower()
+    if not u:find("roblox.com") then
+        C.api += 1; C.total += 1
+        lg.Text = string.format("拦截: %d | API: %d | 属性: %d",C.total,C.api,C.attr)
+        return ""
+    end
+    return oldHttpPost(self, url, data, ...)
 end
 
--- 停止
-local function stopIntercept()
-    Running = false
-    applyAll(false)
-    Status.Text = "● 未启动"
-    Status.TextColor3 = Color3.fromRGB(255, 80, 80)
-    Btn.Text = "▶ 启动拦截"
-    Btn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-    print("[AM拦截诬陷脚本] 已停止 - 头顶名牌已恢复")
+-- Hook 3: GetPlayers 返回空
+local function hkGetPlayers(self)
+    if Running then
+        C.attr += 1; C.total += 1
+        lg.Text = string.format("拦截: %d | API: %d | 属性: %d",C.total,C.api,C.attr)
+        return {}
+    end
+    return oldGetPlrs(self)
 end
 
--- 按钮
-Btn.MouseButton1Click:Connect(function()
-    if Running then stopIntercept() else startIntercept() end
-end)
-
--- 最小化
-local minimized = false
-MinBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    for _, child in ipairs(Main:GetChildren()) do
-        if child ~= TitleBar then
-            child.Visible = not minimized
+-- Hook 4: Player 属性返回假值
+local oldIdx
+oldIdx = hookmetamethod(game, "__index", function(self, key)
+    if Running and typeof(self)=="Instance" and self:IsA("Player") then
+        if key=="Name" or key=="DisplayName" then
+            C.attr += 1; C.total += 1
+            lg.Text = string.format("拦截: %d | API: %d | 属性: %d",C.total,C.api,C.attr)
+            return fakeN()
         end
+        if key=="UserId" then return math.random(100000,999999) end
     end
-    Main.Size = minimized and UDim2.new(0, 240, 0, 32) or UDim2.new(0, 240, 0, 200)
-    MinBtn.Text = minimized and "+" or "—"
+    return oldIdx(self, key)
 end)
 
--- 玩家加入/重生监听
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function(c)
-        task.wait(0.2)
-        pcall(function() applyToCharacter(c, Running) end)
-    end)
-end)
+-- 安装 / 卸载
+local function install()
+    hookfunction(game.HttpGet, hkHttpGet)
+    hookfunction(game.HttpPost, hkHttpPost)
+    hookfunction(Players.GetPlayers, hkGetPlayers)
+end
+local function uninstall()
+    hookfunction(game.HttpGet, oldHttpGet)
+    hookfunction(game.HttpPost, oldHttpPost)
+    hookfunction(Players.GetPlayers, oldGetPlrs)
+end
 
--- 定期检查新生成的头顶GUI（应对动态加载）
-task.spawn(function()
-    while true do
-        task.wait(CONFIG.ScanInterval)
-        if Running then
-            pcall(function() applyAll(true) end)
-        end
+-- ==================== 按钮 ====================
+btn.MouseButton1Click:Connect(function()
+    Running = not Running
+    if Running then
+        install()
+        st.Text="● 硬核拦截中"; st.TextColor3=Color3.fromRGB(100,255,120)
+        btn.Text="■ 停止拦截"; btn.BackgroundColor3=Color3.fromRGB(50,150,50)
+        print("[AM] 硬核拦截已启动")
+    else
+        uninstall()
+        st.Text="● 未启动"; st.TextColor3=Color3.fromRGB(255,100,100)
+        btn.Text="▶ 启动硬核拦截"; btn.BackgroundColor3=Color3.fromRGB(200,40,40)
+        print("[AM] 已停止")
     end
 end)
 
--- 本地玩家重生也要处理
-LocalPlayer.CharacterAdded:Connect(function(c)
-    task.wait(0.2)
-    pcall(function() applyToCharacter(c, Running) end)
-end)
-
-print("[AM拦截诬陷脚本] 悬浮窗已加载 | 群号: " .. CONFIG.GroupNumber)
-print("[AM拦截诬陷脚本] 本脚本仅本地生效，用于防止截图人肉")
+print("[AM·硬核扫描拦截器 v2] 加载完成")
