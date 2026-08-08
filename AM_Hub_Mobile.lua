@@ -16,7 +16,7 @@ local UIS = game:GetService("UserInputService")
 
 -- ========== 配置区 ==========
 local CONFIG = {
-    GroupNumber   = "123456789",       -- ← 改成你的群号
+    GroupNumber   = "QQ17395735636",       -- ← 改成你的群号
     GuiName       = "AM_Intercept",
     Title         = "AM拦截诬陷脚本",
     Version       = "v1.0",
