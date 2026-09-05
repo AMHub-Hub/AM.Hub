@@ -1,5 +1,8 @@
 --// AM Hub Mobile
 --// Luau / LocalScript
+--// 设计基准：360dp
+--// 菜单宽度：250dp
+--// 悬浮球：58dp
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -7,6 +10,17 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
+
+--==================================================
+-- 设计参数
+--==================================================
+
+local DESIGN_WIDTH = 360
+
+local MENU_WIDTH_DP = 250
+local MENU_HEIGHT_DP = 270
+
+local FLOATING_SIZE_DP = 58
 
 --==================================================
 -- GUI
@@ -19,7 +33,48 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
 --==================================================
--- 彩色流光颜色
+-- UI 缩放
+--==================================================
+
+local UIScale = Instance.new("UIScale")
+UIScale.Name = "DesignScale"
+UIScale.Parent = ScreenGui
+
+local function UpdateScale()
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return
+	end
+
+	local viewport = camera.ViewportSize
+
+	-- 按屏幕宽度计算缩放
+	local scale = viewport.X / DESIGN_WIDTH
+
+	-- 防止在极端设备上缩得太小
+	scale = math.clamp(scale, 0.75, 2.0)
+
+	UIScale.Scale = scale
+end
+
+UpdateScale()
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+
+	if workspace.CurrentCamera then
+		UpdateScale()
+
+		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
+	end
+end)
+
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
+end
+
+--==================================================
+-- 彩色流光
 --==================================================
 
 local rainbow = ColorSequence.new({
@@ -38,20 +93,33 @@ local rainbow = ColorSequence.new({
 
 local AMButton = Instance.new("TextButton")
 AMButton.Name = "AMButton"
-AMButton.Size = UDim2.fromOffset(58, 58)
-AMButton.Position = UDim2.new(0, 20, 0.5, -29)
 
--- 白色
+-- 58dp
+AMButton.Size = UDim2.fromOffset(
+	FLOATING_SIZE_DP,
+	FLOATING_SIZE_DP
+)
+
+AMButton.Position = UDim2.new(
+	0,
+	20,
+	0.5,
+	-29
+)
+
 AMButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 AMButton.BackgroundTransparency = 0.05
 
 AMButton.BorderSizePixel = 0
+
 AMButton.Text = "AM"
 AMButton.TextColor3 = Color3.fromRGB(20, 20, 20)
 AMButton.TextSize = 19
 AMButton.Font = Enum.Font.GothamBold
+
 AMButton.AutoButtonColor = false
 AMButton.Active = true
+AMButton.ZIndex = 10
 AMButton.Parent = ScreenGui
 
 local AMCorner = Instance.new("UICorner")
@@ -59,7 +127,7 @@ AMCorner.CornerRadius = UDim.new(1, 0)
 AMCorner.Parent = AMButton
 
 --==================================================
--- 悬浮球彩色流光边框
+-- 悬浮球流光边框
 --==================================================
 
 local AMStroke = Instance.new("UIStroke")
@@ -71,30 +139,38 @@ AMStroke.Parent = AMButton
 local AMGradient = Instance.new("UIGradient")
 AMGradient.Name = "RainbowGradient"
 AMGradient.Color = rainbow
-AMGradient.Rotation = 0
 AMGradient.Parent = AMStroke
 
 --==================================================
 -- 菜单
--- 360dp 参考宽度
--- 菜单宽度 = 250dp
 --==================================================
 
 local Menu = Instance.new("Frame")
 Menu.Name = "Menu"
 
--- 250dp
-Menu.Size = UDim2.fromOffset(250, 270)
+-- 250dp × 270dp
+Menu.Size = UDim2.fromOffset(
+	MENU_WIDTH_DP,
+	MENU_HEIGHT_DP
+)
 
-Menu.Position = UDim2.new(0, 90, 0.5, -135)
+-- 初始位置
+Menu.Position = UDim2.new(
+	0,
+	90,
+	0.5,
+	-MENU_HEIGHT_DP / 2
+)
 
--- 白色菜单
 Menu.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-Menu.BackgroundTransparency = 0.05
+Menu.BackgroundTransparency = 0.04
 
 Menu.BorderSizePixel = 0
+
 Menu.Visible = false
 Menu.Active = true
+Menu.ZIndex = 5
+
 Menu.Parent = ScreenGui
 
 local MenuCorner = Instance.new("UICorner")
@@ -102,7 +178,7 @@ MenuCorner.CornerRadius = UDim.new(0, 15)
 MenuCorner.Parent = Menu
 
 --==================================================
--- 菜单彩色流光边框
+-- 菜单流光边框
 --==================================================
 
 local MenuStroke = Instance.new("UIStroke")
@@ -114,23 +190,35 @@ MenuStroke.Parent = Menu
 local MenuGradient = Instance.new("UIGradient")
 MenuGradient.Name = "RainbowGradient"
 MenuGradient.Color = rainbow
-MenuGradient.Rotation = 0
 MenuGradient.Parent = MenuStroke
 
 --==================================================
--- 菜单标题
+-- 标题
 --==================================================
 
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Size = UDim2.new(1, -60, 0, 45)
+
+Title.Size = UDim2.new(
+	1,
+	-60,
+	0,
+	45
+)
+
 Title.Position = UDim2.fromOffset(15, 7)
+
 Title.BackgroundTransparency = 1
+
 Title.Text = "AM Hub"
 Title.TextColor3 = Color3.fromRGB(20, 20, 20)
+
 Title.TextSize = 21
 Title.Font = Enum.Font.GothamBold
+
 Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.ZIndex = 7
+
 Title.Parent = Menu
 
 --==================================================
@@ -140,14 +228,22 @@ Title.Parent = Menu
 local DragArea = Instance.new("TextButton")
 DragArea.Name = "DragArea"
 
--- 覆盖标题区域
-DragArea.Size = UDim2.new(1, -50, 0, 50)
+DragArea.Size = UDim2.new(
+	1,
+	-50,
+	0,
+	50
+)
+
 DragArea.Position = UDim2.fromOffset(0, 0)
 
 DragArea.BackgroundTransparency = 1
 DragArea.Text = ""
+
 DragArea.AutoButtonColor = false
 DragArea.Active = true
+DragArea.ZIndex = 8
+
 DragArea.Parent = Menu
 
 --==================================================
@@ -156,14 +252,27 @@ DragArea.Parent = Menu
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Name = "CloseButton"
+
 CloseButton.Size = UDim2.fromOffset(35, 35)
-CloseButton.Position = UDim2.new(1, -42, 0, 7)
+
+CloseButton.Position = UDim2.new(
+	1,
+	-42,
+	0,
+	7
+)
+
 CloseButton.BackgroundTransparency = 1
+
 CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(30, 30, 30)
+CloseButton.TextColor3 = Color3.fromRGB(25, 25, 25)
+
 CloseButton.TextSize = 25
 CloseButton.Font = Enum.Font.GothamBold
+
 CloseButton.AutoButtonColor = false
+CloseButton.ZIndex = 10
+
 CloseButton.Parent = Menu
 
 CloseButton.MouseButton1Click:Connect(function()
@@ -171,73 +280,102 @@ CloseButton.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
+-- 创建功能按钮
+--==================================================
+
+local function CreateButton(name, text, y)
+
+	local Button = Instance.new("TextButton")
+
+	Button.Name = name
+
+	Button.Size = UDim2.new(
+		1,
+		-30,
+		0,
+		45
+	)
+
+	Button.Position = UDim2.fromOffset(
+		15,
+		y
+	)
+
+	Button.BackgroundColor3 = Color3.fromRGB(
+		245,
+		245,
+		245
+	)
+
+	Button.BackgroundTransparency = 0
+
+	Button.BorderSizePixel = 0
+
+	Button.Text = text
+
+	Button.TextColor3 = Color3.fromRGB(
+		25,
+		25,
+		25
+	)
+
+	Button.TextSize = 16
+	Button.Font = Enum.Font.Gotham
+
+	Button.AutoButtonColor = false
+
+	Button.ZIndex = 7
+
+	Button.Parent = Menu
+
+	local Corner = Instance.new("UICorner")
+	Corner.CornerRadius = UDim.new(0, 9)
+	Corner.Parent = Button
+
+	local Stroke = Instance.new("UIStroke")
+	Stroke.Color = Color3.fromRGB(220, 220, 220)
+	Stroke.Thickness = 1
+	Stroke.Parent = Button
+
+	return Button
+end
+
+--==================================================
 -- 功能按钮
 --==================================================
 
-local TestButton = Instance.new("TextButton")
-TestButton.Name = "TestButton"
-TestButton.Size = UDim2.new(1, -30, 0, 45)
-TestButton.Position = UDim2.fromOffset(15, 65)
+local Function1 = CreateButton(
+	"Function1",
+	"功能 1",
+	65
+)
 
-TestButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-TestButton.BackgroundTransparency = 0
-
-TestButton.BorderSizePixel = 0
-TestButton.Text = "功能 1"
-TestButton.TextColor3 = Color3.fromRGB(25, 25, 25)
-TestButton.TextSize = 16
-TestButton.Font = Enum.Font.Gotham
-TestButton.AutoButtonColor = false
-TestButton.Parent = Menu
-
-local TestCorner = Instance.new("UICorner")
-TestCorner.CornerRadius = UDim.new(0, 9)
-TestCorner.Parent = TestButton
-
-local TestStroke = Instance.new("UIStroke")
-TestStroke.Color = Color3.fromRGB(220, 220, 220)
-TestStroke.Thickness = 1
-TestStroke.Parent = TestButton
-
-TestButton.MouseButton1Click:Connect(function()
+Function1.MouseButton1Click:Connect(function()
 	print("功能 1")
 end)
 
---==================================================
--- 第二个示例按钮
---==================================================
+local Function2 = CreateButton(
+	"Function2",
+	"功能 2",
+	120
+)
 
-local TestButton2 = Instance.new("TextButton")
-TestButton2.Name = "TestButton2"
-TestButton2.Size = UDim2.new(1, -30, 0, 45)
-TestButton2.Position = UDim2.fromOffset(15, 120)
-
-TestButton2.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-TestButton2.BackgroundTransparency = 0
-
-TestButton2.BorderSizePixel = 0
-TestButton2.Text = "功能 2"
-TestButton2.TextColor3 = Color3.fromRGB(25, 25, 25)
-TestButton2.TextSize = 16
-TestButton2.Font = Enum.Font.Gotham
-TestButton2.AutoButtonColor = false
-TestButton2.Parent = Menu
-
-local TestCorner2 = Instance.new("UICorner")
-TestCorner2.CornerRadius = UDim.new(0, 9)
-TestCorner2.Parent = TestButton2
-
-local TestStroke2 = Instance.new("UIStroke")
-TestStroke2.Color = Color3.fromRGB(220, 220, 220)
-TestStroke2.Thickness = 1
-TestStroke2.Parent = TestButton2
-
-TestButton2.MouseButton1Click:Connect(function()
+Function2.MouseButton1Click:Connect(function()
 	print("功能 2")
 end)
 
+local Function3 = CreateButton(
+	"Function3",
+	"功能 3",
+	175
+)
+
+Function3.MouseButton1Click:Connect(function()
+	print("功能 3")
+end)
+
 --==================================================
--- 悬浮球拖动 / 点击
+-- 悬浮球拖动
 --==================================================
 
 local buttonDragging = false
@@ -269,7 +407,9 @@ UserInputService.InputChanged:Connect(function(input)
 
 		local delta = input.Position - buttonDragStart
 
-		if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
+		if math.abs(delta.X) > 6
+			or math.abs(delta.Y) > 6 then
+
 			buttonMoved = true
 		end
 
