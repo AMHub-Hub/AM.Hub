@@ -1,19 +1,19 @@
---// AM Hub Mobile
+--// AM Hub Mobile 3.0
 --// Luau / LocalScript
---// Mobile UI
---// 无 DP / 无 UIScale
---// 直接使用 Roblox Offset 尺寸
+--// Roblox Studio
+--// UI + 自己游戏的功能接口版本
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 local Lighting = game:GetService("Lighting")
 
-local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 --==================================================
--- 基础设置
+-- CONFIG
 --==================================================
 
 local MENU_WIDTH = 280
@@ -21,24 +21,26 @@ local MENU_HEIGHT = 330
 
 local FLOAT_SIZE = 58
 
--- 在这里填写你的 QQ 群号
-local QQ_GROUP = "179051448"
+local QQ_GROUP = "你的QQ群号"
 
 --==================================================
--- ScreenGui
+-- 状态
 --==================================================
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AM_Hub_Mobile"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = PlayerGui
+local Flying = false
+local InfiniteJump = false
+
+local FlightSpeed = 50
+local SelectedPlayer = nil
+
+local FlightConnection = nil
+local InfiniteJumpConnection = nil
 
 --==================================================
--- 彩虹颜色
+-- 彩虹
 --==================================================
 
-local rainbow = ColorSequence.new({
+local Rainbow = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 80)),
 	ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 150, 0)),
 	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 100)),
@@ -49,29 +51,71 @@ local rainbow = ColorSequence.new({
 })
 
 --==================================================
--- 工具函数
+-- 工具
 --==================================================
 
-local function AddCorner(object, radius)
+local function Corner(object, radius)
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = object
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = object
 
-	return corner
+	return c
+
+end
+
+local function Stroke(object, color, thickness)
+
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness
+	s.Parent = object
+
+	return s
 
 end
 
-local function AddStroke(object, color, thickness)
+local function GetCharacter()
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
-	stroke.Thickness = thickness
-	stroke.Parent = object
-
-	return stroke
+	return LocalPlayer.Character
 
 end
+
+local function GetHumanoid()
+
+	local character = GetCharacter()
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChildOfClass("Humanoid")
+
+end
+
+local function GetRoot()
+
+	local character = GetCharacter()
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+
+end
+
+--==================================================
+-- GUI
+--==================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+
+ScreenGui.Name = "AM_Hub_Mobile"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+
+ScreenGui.Parent = PlayerGui
 
 --==================================================
 -- 悬浮球
@@ -81,22 +125,22 @@ local AMButton = Instance.new("TextButton")
 
 AMButton.Name = "AMButton"
 
-AMButton.Size = UDim2.fromOffset(
-	FLOAT_SIZE,
-	FLOAT_SIZE
-)
+AMButton.Size =
+	UDim2.fromOffset(
+		FLOAT_SIZE,
+		FLOAT_SIZE
+	)
 
-AMButton.Position = UDim2.new(
-	0,
-	18,
-	0.5,
-	-29
-)
+AMButton.Position =
+	UDim2.new(
+		0,
+		18,
+		0.5,
+		-29
+	)
 
 AMButton.BackgroundColor3 =
 	Color3.fromRGB(255, 255, 255)
-
-AMButton.BackgroundTransparency = 0.03
 
 AMButton.BorderSizePixel = 0
 
@@ -106,30 +150,19 @@ AMButton.TextColor3 =
 	Color3.fromRGB(20, 20, 20)
 
 AMButton.TextSize = 19
-
-AMButton.Font =
-	Enum.Font.GothamBold
+AMButton.Font = Enum.Font.GothamBold
 
 AMButton.AutoButtonColor = false
-
 AMButton.Active = true
-
 AMButton.ZIndex = 100
 
 AMButton.Parent = ScreenGui
 
-AddCorner(AMButton, 100)
-
---==================================================
--- 悬浮球流光
---==================================================
+Corner(AMButton, 100)
 
 local AMStroke = Instance.new("UIStroke")
 
-AMStroke.Name = "RainbowStroke"
-
 AMStroke.Thickness = 3
-
 AMStroke.ApplyStrokeMode =
 	Enum.ApplyStrokeMode.Border
 
@@ -137,57 +170,46 @@ AMStroke.Parent = AMButton
 
 local AMGradient = Instance.new("UIGradient")
 
-AMGradient.Color = rainbow
-
+AMGradient.Color = Rainbow
 AMGradient.Parent = AMStroke
 
 --==================================================
--- 菜单
+-- 主菜单
 --==================================================
 
 local Menu = Instance.new("Frame")
 
 Menu.Name = "Menu"
 
-Menu.Size = UDim2.fromOffset(
-	MENU_WIDTH,
-	MENU_HEIGHT
-)
+Menu.Size =
+	UDim2.fromOffset(
+		MENU_WIDTH,
+		MENU_HEIGHT
+	)
 
-Menu.Position = UDim2.new(
-	0,
-	88,
-	0.5,
-	-MENU_HEIGHT / 2
-)
+Menu.Position =
+	UDim2.new(
+		0,
+		88,
+		0.5,
+		-MENU_HEIGHT / 2
+	)
 
 Menu.BackgroundColor3 =
 	Color3.fromRGB(255, 255, 255)
 
-Menu.BackgroundTransparency = 0.02
-
 Menu.BorderSizePixel = 0
-
 Menu.Visible = false
-
 Menu.Active = true
 
 Menu.ZIndex = 10
-
 Menu.Parent = ScreenGui
 
-AddCorner(Menu, 16)
-
---==================================================
--- 菜单流光边框
---==================================================
+Corner(Menu, 16)
 
 local MenuStroke = Instance.new("UIStroke")
 
-MenuStroke.Name = "RainbowStroke"
-
 MenuStroke.Thickness = 3
-
 MenuStroke.ApplyStrokeMode =
 	Enum.ApplyStrokeMode.Border
 
@@ -195,46 +217,38 @@ MenuStroke.Parent = Menu
 
 local MenuGradient = Instance.new("UIGradient")
 
-MenuGradient.Color = rainbow
-
+MenuGradient.Color = Rainbow
 MenuGradient.Parent = MenuStroke
-
---==================================================
--- 顶部标题栏
---==================================================
-
-local Header = Instance.new("Frame")
-
-Header.Name = "Header"
-
-Header.Size = UDim2.new(
-	1,
-	0,
-	0,
-	48
-)
-
-Header.Position =
-	UDim2.fromOffset(0, 0)
-
-Header.BackgroundTransparency = 1
-
-Header.ZIndex = 20
-
-Header.Parent = Menu
 
 --==================================================
 -- 标题
 --==================================================
 
+local Header = Instance.new("Frame")
+
+Header.Size =
+	UDim2.new(
+		1,
+		0,
+		0,
+		48
+	)
+
+Header.BackgroundTransparency = 1
+Header.Active = true
+Header.ZIndex = 20
+
+Header.Parent = Menu
+
 local Title = Instance.new("TextLabel")
 
-Title.Size = UDim2.new(
-	1,
-	-55,
-	1,
-	0
-)
+Title.Size =
+	UDim2.new(
+		1,
+		-55,
+		1,
+		0
+	)
 
 Title.Position =
 	UDim2.fromOffset(15, 0)
@@ -247,24 +261,15 @@ Title.TextColor3 =
 	Color3.fromRGB(20, 20, 20)
 
 Title.TextSize = 21
-
-Title.Font =
-	Enum.Font.GothamBold
+Title.Font = Enum.Font.GothamBold
 
 Title.TextXAlignment =
 	Enum.TextXAlignment.Left
 
 Title.ZIndex = 21
-
 Title.Parent = Header
 
---==================================================
--- 关闭按钮
---==================================================
-
 local CloseButton = Instance.new("TextButton")
-
-CloseButton.Name = "CloseButton"
 
 CloseButton.Size =
 	UDim2.fromOffset(38, 38)
@@ -285,12 +290,9 @@ CloseButton.TextColor3 =
 	Color3.fromRGB(30, 30, 30)
 
 CloseButton.TextSize = 27
-
-CloseButton.Font =
-	Enum.Font.GothamBold
+CloseButton.Font = Enum.Font.GothamBold
 
 CloseButton.AutoButtonColor = false
-
 CloseButton.ZIndex = 30
 
 CloseButton.Parent = Header
@@ -307,14 +309,13 @@ end)
 
 local CategoryBar = Instance.new("Frame")
 
-CategoryBar.Name = "CategoryBar"
-
-CategoryBar.Size = UDim2.new(
-	0,
-	82,
-	1,
-	-58
-)
+CategoryBar.Size =
+	UDim2.new(
+		0,
+		82,
+		1,
+		-58
+	)
 
 CategoryBar.Position =
 	UDim2.fromOffset(6, 52)
@@ -323,12 +324,11 @@ CategoryBar.BackgroundColor3 =
 	Color3.fromRGB(245, 245, 245)
 
 CategoryBar.BorderSizePixel = 0
-
 CategoryBar.ZIndex = 15
 
 CategoryBar.Parent = Menu
 
-AddCorner(CategoryBar, 11)
+Corner(CategoryBar, 11)
 
 --==================================================
 -- 右侧内容
@@ -336,32 +336,25 @@ AddCorner(CategoryBar, 11)
 
 local Content = Instance.new("ScrollingFrame")
 
-Content.Name = "Content"
-
-Content.Size = UDim2.new(
-	1,
-	-97,
-	1,
-	-58
-)
+Content.Size =
+	UDim2.new(
+		1,
+		-97,
+		1,
+		-58
+	)
 
 Content.Position =
 	UDim2.fromOffset(91, 52)
 
 Content.BackgroundTransparency = 1
-
 Content.BorderSizePixel = 0
 
 Content.ScrollBarThickness = 4
-
 Content.ScrollBarImageColor3 =
-	Color3.fromRGB(160, 160, 160)
-
-Content.ScrollingDirection =
-	Enum.ScrollingDirection.Y
+	Color3.fromRGB(150, 150, 150)
 
 Content.ZIndex = 15
-
 Content.Parent = Menu
 
 local ContentLayout = Instance.new("UIListLayout")
@@ -378,30 +371,32 @@ ContentLayout:GetPropertyChangedSignal(
 	"AbsoluteContentSize"
 ):Connect(function()
 
-	Content.CanvasSize = UDim2.fromOffset(
-		0,
-		ContentLayout.AbsoluteContentSize.Y + 12
-	)
+	Content.CanvasSize =
+		UDim2.fromOffset(
+			0,
+			ContentLayout.AbsoluteContentSize.Y + 15
+		)
 
 end)
 
 --==================================================
--- 清理内容
+-- 清除内容
 --==================================================
 
 local function ClearContent()
 
-	for _, object in ipairs(Content:GetChildren()) do
+	for _, object in ipairs(
+		Content:GetChildren()
+	) do
 
 		if not object:IsA("UIListLayout") then
-
 			object:Destroy()
-
 		end
 
 	end
 
-	Content.CanvasPosition = Vector2.new(0, 0)
+	Content.CanvasPosition =
+		Vector2.zero
 
 end
 
@@ -409,12 +404,17 @@ end
 -- 标题
 --==================================================
 
-local function CreateSectionTitle(text)
+local function Section(text)
 
 	local label = Instance.new("TextLabel")
 
 	label.Size =
-		UDim2.new(1, -10, 0, 30)
+		UDim2.new(
+			1,
+			-10,
+			0,
+			30
+		)
 
 	label.BackgroundTransparency = 1
 
@@ -424,15 +424,12 @@ local function CreateSectionTitle(text)
 		Color3.fromRGB(20, 20, 20)
 
 	label.TextSize = 17
-
-	label.Font =
-		Enum.Font.GothamBold
+	label.Font = Enum.Font.GothamBold
 
 	label.TextXAlignment =
 		Enum.TextXAlignment.Left
 
 	label.ZIndex = 20
-
 	label.Parent = Content
 
 	return label
@@ -440,15 +437,20 @@ local function CreateSectionTitle(text)
 end
 
 --==================================================
--- 普通按钮
+-- 按钮
 --==================================================
 
-local function CreateButton(text, callback)
+local function Button(text, callback)
 
 	local button = Instance.new("TextButton")
 
 	button.Size =
-		UDim2.new(1, -10, 0, 42)
+		UDim2.new(
+			1,
+			-10,
+			0,
+			42
+		)
 
 	button.BackgroundColor3 =
 		Color3.fromRGB(245, 245, 245)
@@ -461,19 +463,14 @@ local function CreateButton(text, callback)
 		Color3.fromRGB(25, 25, 25)
 
 	button.TextSize = 14
-
-	button.Font =
-		Enum.Font.Gotham
-
-	button.AutoButtonColor = true
+	button.Font = Enum.Font.Gotham
 
 	button.ZIndex = 20
-
 	button.Parent = Content
 
-	AddCorner(button, 9)
+	Corner(button, 9)
 
-	AddStroke(
+	Stroke(
 		button,
 		Color3.fromRGB(220, 220, 220),
 		1
@@ -495,45 +492,52 @@ end
 -- 开关
 --==================================================
 
-local function CreateToggle(text, default, callback)
+local function Toggle(text, default, callback)
 
 	local button = Instance.new("TextButton")
 
 	button.Size =
-		UDim2.new(1, -10, 0, 42)
-
-	button.BackgroundColor3 =
-		Color3.fromRGB(245, 245, 245)
+		UDim2.new(
+			1,
+			-10,
+			0,
+			42
+		)
 
 	button.BorderSizePixel = 0
 
 	button.TextSize = 14
-
-	button.Font =
-		Enum.Font.GothamBold
+	button.Font = Enum.Font.GothamBold
 
 	button.AutoButtonColor = false
-
 	button.ZIndex = 20
 
 	button.Parent = Content
 
-	AddCorner(button, 9)
+	Corner(button, 9)
 
-	local enabled = default or false
+	local state = default or false
 
 	local function Refresh()
 
-		if enabled then
+		if state then
 
 			button.Text =
 				text .. "    ● 开启"
 
 			button.TextColor3 =
-				Color3.fromRGB(0, 150, 80)
+				Color3.fromRGB(
+					0,
+					140,
+					80
+				)
 
 			button.BackgroundColor3 =
-				Color3.fromRGB(235, 250, 240)
+				Color3.fromRGB(
+					235,
+					250,
+					240
+				)
 
 		else
 
@@ -541,10 +545,18 @@ local function CreateToggle(text, default, callback)
 				text .. "    ○ 关闭"
 
 			button.TextColor3 =
-				Color3.fromRGB(50, 50, 50)
+				Color3.fromRGB(
+					50,
+					50,
+					50
+				)
 
 			button.BackgroundColor3 =
-				Color3.fromRGB(245, 245, 245)
+				Color3.fromRGB(
+					245,
+					245,
+					245
+				)
 
 		end
 
@@ -554,14 +566,12 @@ local function CreateToggle(text, default, callback)
 
 	button.MouseButton1Click:Connect(function()
 
-		enabled = not enabled
+		state = not state
 
 		Refresh()
 
 		if callback then
-
-			callback(enabled)
-
+			callback(state)
 		end
 
 	end)
@@ -574,7 +584,7 @@ end
 -- 滑块
 --==================================================
 
-local function CreateSlider(
+local function Slider(
 	text,
 	minimum,
 	maximum,
@@ -585,23 +595,32 @@ local function CreateSlider(
 	local holder = Instance.new("Frame")
 
 	holder.Size =
-		UDim2.new(1, -10, 0, 60)
+		UDim2.new(
+			1,
+			-10,
+			0,
+			60
+		)
 
 	holder.BackgroundColor3 =
 		Color3.fromRGB(245, 245, 245)
 
 	holder.BorderSizePixel = 0
-
 	holder.ZIndex = 20
 
 	holder.Parent = Content
 
-	AddCorner(holder, 9)
+	Corner(holder, 9)
 
 	local label = Instance.new("TextLabel")
 
 	label.Size =
-		UDim2.new(1, -16, 0, 24)
+		UDim2.new(
+			1,
+			-16,
+			0,
+			24
+		)
 
 	label.Position =
 		UDim2.fromOffset(8, 3)
@@ -612,21 +631,23 @@ local function CreateSlider(
 		Color3.fromRGB(30, 30, 30)
 
 	label.TextSize = 13
-
-	label.Font =
-		Enum.Font.Gotham
+	label.Font = Enum.Font.Gotham
 
 	label.TextXAlignment =
 		Enum.TextXAlignment.Left
 
 	label.ZIndex = 21
-
 	label.Parent = holder
 
 	local bar = Instance.new("Frame")
 
 	bar.Size =
-		UDim2.new(1, -20, 0, 7)
+		UDim2.new(
+			1,
+			-20,
+			0,
+			7
+		)
 
 	bar.Position =
 		UDim2.fromOffset(10, 38)
@@ -635,28 +656,26 @@ local function CreateSlider(
 		Color3.fromRGB(215, 215, 215)
 
 	bar.BorderSizePixel = 0
-
 	bar.ZIndex = 21
 
 	bar.Parent = holder
 
-	AddCorner(bar, 10)
+	Corner(bar, 10)
 
 	local fill = Instance.new("Frame")
 
 	fill.Size =
-		UDim2.new(0, 0, 1, 0)
+		UDim2.fromScale(0, 1)
 
 	fill.BackgroundColor3 =
-		Color3.fromRGB(80, 80, 80)
+		Color3.fromRGB(45, 45, 45)
 
 	fill.BorderSizePixel = 0
-
 	fill.ZIndex = 22
 
 	fill.Parent = bar
 
-	AddCorner(fill, 10)
+	Corner(fill, 10)
 
 	local knob = Instance.new("Frame")
 
@@ -664,30 +683,24 @@ local function CreateSlider(
 		UDim2.fromOffset(15, 15)
 
 	knob.AnchorPoint =
-		Vector2.new(.5, .5)
-
-	knob.Position =
-		UDim2.new(0, 0, .5, 0)
+		Vector2.new(0.5, 0.5)
 
 	knob.BackgroundColor3 =
-		Color3.fromRGB(50, 50, 50)
+		Color3.fromRGB(35, 35, 35)
 
 	knob.BorderSizePixel = 0
-
 	knob.ZIndex = 23
 
 	knob.Parent = bar
 
-	AddCorner(knob, 20)
+	Corner(knob, 20)
 
 	local dragging = false
 
-	local value = default
-
-	local function SetValue(newValue)
+	local function SetValue(value)
 
 		value = math.clamp(
-			newValue,
+			value,
 			minimum,
 			maximum
 		)
@@ -713,18 +726,17 @@ local function CreateSlider(
 			)
 
 		label.Text =
-			text .. " : " ..
+			text ..
+			" : " ..
 			math.floor(value)
 
 		if callback then
-
 			callback(value)
-
 		end
 
 	end
 
-	local function UpdateFromInput(input)
+	local function Update(input)
 
 		local x =
 			input.Position.X -
@@ -732,7 +744,8 @@ local function CreateSlider(
 
 		local percent =
 			math.clamp(
-				x / bar.AbsoluteSize.X,
+				x /
+				bar.AbsoluteSize.X,
 				0,
 				1
 			)
@@ -753,8 +766,7 @@ local function CreateSlider(
 			Enum.UserInputType.MouseButton1 then
 
 			dragging = true
-
-			UpdateFromInput(input)
+			Update(input)
 
 		end
 
@@ -771,7 +783,7 @@ local function CreateSlider(
 			or input.UserInputType ==
 			Enum.UserInputType.MouseMovement then
 
-			UpdateFromInput(input)
+			Update(input)
 
 		end
 
@@ -797,50 +809,458 @@ local function CreateSlider(
 end
 
 --==================================================
--- 信息
+-- 飞行
+--==================================================
+
+local function StopFlight()
+
+	Flying = false
+
+	if FlightConnection then
+
+		FlightConnection:Disconnect()
+		FlightConnection = nil
+
+	end
+
+	local humanoid = GetHumanoid()
+
+	if humanoid then
+
+		humanoid.PlatformStand = false
+
+	end
+
+	local root = GetRoot()
+
+	if root then
+
+		root.AssemblyLinearVelocity =
+			Vector3.zero
+
+	end
+
+end
+
+local function StartFlight()
+
+	if Flying then
+		return
+	end
+
+	local humanoid = GetHumanoid()
+	local root = GetRoot()
+
+	if not humanoid or not root then
+		return
+	end
+
+	Flying = true
+
+	humanoid.PlatformStand = true
+
+	FlightConnection =
+		RunService.RenderStepped:Connect(
+			function()
+
+				if not Flying then
+					return
+				end
+
+				local currentHumanoid =
+					GetHumanoid()
+
+				local currentRoot =
+					GetRoot()
+
+				if not currentHumanoid
+					or not currentRoot then
+
+					StopFlight()
+					return
+
+				end
+
+				local camera =
+					workspace.CurrentCamera
+
+				if not camera then
+					return
+				end
+
+				local move =
+					currentHumanoid.MoveDirection
+
+				local velocity =
+					Vector3.zero
+
+				if move.Magnitude > 0 then
+
+					velocity =
+						move.Unit *
+						FlightSpeed
+
+				end
+
+				currentRoot.AssemblyLinearVelocity =
+					velocity
+
+			end
+		)
+
+end
+
+--==================================================
+-- 无限跳跃
+--==================================================
+
+InfiniteJumpConnection =
+	UserInputService.JumpRequest:Connect(
+		function()
+
+			if not InfiniteJump then
+				return
+			end
+
+			local humanoid =
+				GetHumanoid()
+
+			if humanoid then
+
+				humanoid:ChangeState(
+					Enum.HumanoidStateType.Jumping
+				)
+
+			end
+
+		end
+	)
+
+--==================================================
+-- 玩家选择器
+--==================================================
+
+local PlayerSelector = Instance.new("Frame")
+
+PlayerSelector.Name =
+	"PlayerSelector"
+
+PlayerSelector.Size =
+	UDim2.fromOffset(
+		250,
+		300
+	)
+
+PlayerSelector.Position =
+	UDim2.new(
+		0.5,
+		-125,
+		0.5,
+		-150
+	)
+
+PlayerSelector.BackgroundColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+PlayerSelector.BorderSizePixel = 0
+
+PlayerSelector.Visible = false
+PlayerSelector.Active = true
+
+PlayerSelector.ZIndex = 200
+
+PlayerSelector.Parent = ScreenGui
+
+Corner(PlayerSelector, 15)
+
+local SelectorStroke =
+	Instance.new("UIStroke")
+
+SelectorStroke.Thickness = 3
+SelectorStroke.ApplyStrokeMode =
+	Enum.ApplyStrokeMode.Border
+
+SelectorStroke.Parent =
+	PlayerSelector
+
+local SelectorGradient =
+	Instance.new("UIGradient")
+
+SelectorGradient.Color =
+	Rainbow
+
+SelectorGradient.Parent =
+	SelectorStroke
+
+--==================================================
+-- 玩家选择器标题
+--==================================================
+
+local SelectorTitle =
+	Instance.new("TextLabel")
+
+SelectorTitle.Size =
+	UDim2.new(
+		1,
+		-55,
+		0,
+		45
+	)
+
+SelectorTitle.Position =
+	UDim2.fromOffset(15, 3)
+
+SelectorTitle.BackgroundTransparency = 1
+
+SelectorTitle.Text =
+	"选择玩家"
+
+SelectorTitle.TextColor3 =
+	Color3.fromRGB(20, 20, 20)
+
+SelectorTitle.TextSize = 18
+SelectorTitle.Font =
+	Enum.Font.GothamBold
+
+SelectorTitle.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+SelectorTitle.ZIndex = 210
+
+SelectorTitle.Parent =
+	PlayerSelector
+
+local SelectorClose =
+	Instance.new("TextButton")
+
+SelectorClose.Size =
+	UDim2.fromOffset(35, 35)
+
+SelectorClose.Position =
+	UDim2.new(
+		1,
+		-40,
+		0,
+		6
+	)
+
+SelectorClose.BackgroundTransparency = 1
+
+SelectorClose.Text = "×"
+
+SelectorClose.TextColor3 =
+	Color3.fromRGB(30, 30, 30)
+
+SelectorClose.TextSize = 25
+SelectorClose.Font =
+	Enum.Font.GothamBold
+
+SelectorClose.ZIndex = 220
+
+SelectorClose.Parent =
+	PlayerSelector
+
+SelectorClose.MouseButton1Click:Connect(
+	function()
+
+		PlayerSelector.Visible =
+			false
+
+	end
+)
+
+--==================================================
+-- 玩家列表
+--==================================================
+
+local PlayerList =
+	Instance.new("ScrollingFrame")
+
+PlayerList.Size =
+	UDim2.new(
+		1,
+		-20,
+		1,
+		-60
+	)
+
+PlayerList.Position =
+	UDim2.fromOffset(10, 52)
+
+PlayerList.BackgroundTransparency = 1
+
+PlayerList.BorderSizePixel = 0
+
+PlayerList.ScrollBarThickness = 4
+
+PlayerList.ZIndex = 210
+
+PlayerList.Parent =
+	PlayerSelector
+
+local PlayerLayout =
+	Instance.new("UIListLayout")
+
+PlayerLayout.Padding =
+	UDim.new(0, 6)
+
+PlayerLayout.Parent =
+	PlayerList
+
+PlayerLayout:GetPropertyChangedSignal(
+		"AbsoluteContentSize"
+):Connect(
+	function()
+
+		PlayerList.CanvasSize =
+			UDim2.fromOffset(
+				0,
+				PlayerLayout.AbsoluteContentSize.Y + 10
+			)
+
+	end
+)
+
+local function RefreshPlayerList()
+
+	for _, object in ipairs(
+		PlayerList:GetChildren()
+	) do
+
+		if not object:IsA(
+			"UIListLayout"
+		) then
+
+			object:Destroy()
+
+		end
+
+	end
+
+	for _, target in ipairs(
+		Players:GetPlayers()
+	) do
+
+		if target ~= LocalPlayer then
+
+			local button =
+				Instance.new("TextButton")
+
+			button.Size =
+				UDim2.new(
+					1,
+					-5,
+					0,
+					40
+				)
+
+			button.BackgroundColor3 =
+				Color3.fromRGB(
+					245,
+					245,
+					245
+				)
+
+			button.BorderSizePixel = 0
+
+			button.Text =
+				target.DisplayName ..
+				"  @" ..
+				target.Name
+
+			button.TextColor3 =
+				Color3.fromRGB(
+					25,
+					25,
+					25
+				)
+
+			button.TextSize = 13
+			button.Font =
+				Enum.Font.Gotham
+
+			button.ZIndex = 220
+
+			button.Parent =
+				PlayerList
+
+			Corner(button, 8)
+
+			button.MouseButton1Click:Connect(
+				function()
+
+					SelectedPlayer =
+						target
+
+					PlayerSelector.Visible =
+						false
+
+					print(
+						"当前目标：",
+						target.Name
+					)
+
+				end
+			)
+
+		end
+
+	end
+
+end
+
+Players.PlayerRemoving:Connect(
+	function(leavingPlayer)
+
+		if SelectedPlayer ==
+			leavingPlayer then
+
+			SelectedPlayer = nil
+
+		end
+
+	end
+)
+
+--==================================================
+-- 信息页面
 --==================================================
 
 local function ShowInfo()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"信息"
-	)
+	Section("信息")
 
-	CreateButton(
+	Button(
 		"欢迎使用 AM Hub"
 	)
 
-	local accountAge =
-		player.AccountAge
+	local age =
+		LocalPlayer.AccountAge
 
 	local years =
-		math.floor(accountAge / 365)
+		math.floor(age / 365)
 
 	local days =
-		accountAge % 365
+		age % 365
 
-	CreateButton(
-		"Roblox 账户年龄：" ..
+	Button(
+		"Roblox 账户：" ..
 		years ..
 		" 年 " ..
 		days ..
 		" 天"
 	)
 
-	CreateButton(
+	Button(
 		"用户名：" ..
-		player.Name
+		LocalPlayer.Name
 	)
 
-	CreateButton(
+	Button(
 		"QQ 群：" ..
 		QQ_GROUP
-	)
-
-	CreateButton(
-		"AM Mobile"
 	)
 
 end
@@ -853,24 +1273,45 @@ local function ShowGeneral()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"通用"
-	)
+	Section("通用")
 
-	CreateToggle(
-		"飞行",
-		false,
+	Toggle(
+		"无限跳跃 FE",
+		InfiniteJump,
 		function(enabled)
 
-			print(
-				"飞行：",
-				enabled
-			)
+			InfiniteJump = enabled
 
 		end
 	)
 
-	CreateToggle(
+	Toggle(
+		"飞行",
+		Flying,
+		function(enabled)
+
+			if enabled then
+				StartFlight()
+			else
+				StopFlight()
+			end
+
+		end
+	)
+
+	Slider(
+		"飞行速度",
+		1,
+		100,
+		FlightSpeed,
+		function(value)
+
+			FlightSpeed = value
+
+		end
+	)
+
+	Toggle(
 		"夜视",
 		false,
 		function(enabled)
@@ -889,21 +1330,15 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateSlider(
+	Slider(
 		"移速",
-		0,
+		1,
 		300,
 		16,
 		function(value)
 
-			local character =
-				player.Character
-
 			local humanoid =
-				character and
-				character:FindFirstChildOfClass(
-					"Humanoid"
-				)
+				GetHumanoid()
 
 			if humanoid then
 
@@ -915,32 +1350,15 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateButton(
-		"移动方式",
-		function()
-
-			print(
-				"移动方式选择"
-			)
-
-		end
-	)
-
-	CreateSlider(
+	Slider(
 		"跳高",
-		0,
+		1,
 		300,
 		50,
 		function(value)
 
-			local character =
-				player.Character
-
 			local humanoid =
-				character and
-				character:FindFirstChildOfClass(
-					"Humanoid"
-				)
+				GetHumanoid()
 
 			if humanoid then
 
@@ -952,7 +1370,7 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateSlider(
+	Slider(
 		"重力",
 		0,
 		300,
@@ -965,7 +1383,7 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"点击屏幕瞬移",
 		false,
 		function(enabled)
@@ -978,7 +1396,7 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"踏空飞行",
 		false,
 		function(enabled)
@@ -991,7 +1409,7 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"锁定视角",
 		false,
 		function(enabled)
@@ -1011,23 +1429,25 @@ local function ShowGeneral()
 		end
 	)
 
-	CreateButton(
-		"退出服务器",
+	Button(
+		"退出当前服务器",
 		function()
 
-			player:Kick(
-				"已退出服务器"
+			-- 只让当前玩家离开
+			LocalPlayer:Kick(
+				"已离开当前服务器"
 			)
 
 		end
 	)
 
-	CreateButton(
+	Button(
 		"重新选择服务器",
 		function()
 
+			-- 自己的游戏可以在这里接服务器选择 UI
 			print(
-				"重新选择服务器"
+				"打开服务器选择器"
 			)
 
 		end
@@ -1043,26 +1463,24 @@ local function ShowCombat()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"战斗"
-	)
+	Section("战斗")
 
-	CreateToggle(
+	Toggle(
 		"透视",
 		false,
 		function(enabled)
 
 			print(
-				"透视状态：",
+				"透视：",
 				enabled
 			)
 
 		end
 	)
 
-	CreateSlider(
+	Slider(
 		"范围",
-		0,
+		1,
 		1500,
 		150,
 		function(value)
@@ -1075,7 +1493,7 @@ local function ShowCombat()
 		end
 	)
 
-	CreateSlider(
+	Slider(
 		"自瞄 FOV",
 		1,
 		180,
@@ -1090,11 +1508,26 @@ local function ShowCombat()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
+		"自瞄",
+		false,
+		function(enabled)
+
+			-- 接你自己的服务器授权系统
+			print(
+				"自瞄：",
+				enabled
+			)
+
+		end
+	)
+
+	Toggle(
 		"子弹追踪",
 		false,
 		function(enabled)
 
+			-- 接你自己的服务器投射物系统
 			print(
 				"子弹追踪：",
 				enabled
@@ -1103,47 +1536,20 @@ local function ShowCombat()
 		end
 	)
 
-	CreateToggle(
-		"无限子弹",
-		false,
-		function(enabled)
-
-			print(
-				"无限子弹：",
-				enabled
-			)
-
-		end
+	Button(
+		"敌对颜色：红色"
 	)
 
-	CreateButton(
-		"敌对颜色：红色",
-		function()
-
-			print(
-				"敌对颜色"
-			)
-
-		end
+	Button(
+		"我方颜色：蓝色"
 	)
 
-	CreateButton(
-		"我方颜色：蓝色",
-		function()
-
-			print(
-				"我方颜色"
-			)
-
-		end
-	)
-
-	CreateButton(
+	Button(
 		"自定义颜色",
 		function()
 
 			print(
-				"颜色选择器"
+				"打开颜色选择器"
 			)
 
 		end
@@ -1159,11 +1565,9 @@ local function ShowEntertainment()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"娱乐"
-	)
+	Section("娱乐")
 
-	CreateSlider(
+	Slider(
 		"FPS",
 		1,
 		100,
@@ -1181,64 +1585,107 @@ local function ShowEntertainment()
 end
 
 --==================================================
--- FE
+-- 甩飞
 --==================================================
 
-local function ShowFE()
+local function ShowFling()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"FE"
-	)
+	Section("甩飞")
 
-	CreateButton(
+	Button(
 		"选择玩家",
 		function()
 
-			print(
-				"玩家选择器"
-			)
+			RefreshPlayerList()
+
+			PlayerSelector.Visible =
+				true
 
 		end
 	)
 
-	CreateButton(
+	local targetName =
+		SelectedPlayer
+		and SelectedPlayer.Name
+		or "未选择"
+
+	Button(
+		"当前目标：" ..
+		targetName
+	)
+
+	-- 下面都是服务器授权接口
+	Button(
 		"甩飞",
 		function()
 
+			if not SelectedPlayer then
+
+				print(
+					"请先选择玩家"
+				)
+
+				return
+
+			end
+
 			print(
-				"甩飞"
+				"请求甩飞目标：",
+				SelectedPlayer.Name
 			)
 
 		end
 	)
 
-	CreateButton(
+	Button(
 		"传送",
 		function()
 
+			if not SelectedPlayer then
+
+				print(
+					"请先选择玩家"
+				)
+
+				return
+
+			end
+
 			print(
-				"传送"
+				"请求传送目标：",
+				SelectedPlayer.Name
 			)
 
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"环绕",
 		false,
 		function(enabled)
 
-			print(
-				"环绕：",
-				enabled
-			)
+			if SelectedPlayer then
+
+				print(
+					"环绕：",
+					enabled,
+					SelectedPlayer.Name
+				)
+
+			else
+
+				print(
+					"请先选择玩家"
+				)
+
+			end
 
 		end
 	)
 
-	CreateSlider(
+	Slider(
 		"环绕速度",
 		1,
 		100,
@@ -1253,12 +1700,23 @@ local function ShowFE()
 		end
 	)
 
-	CreateButton(
+	Button(
 		"客户端传送",
 		function()
 
+			if not SelectedPlayer then
+
+				print(
+					"请先选择玩家"
+				)
+
+				return
+
+			end
+
 			print(
-				"客户端传送"
+				"客户端传送目标：",
+				SelectedPlayer.Name
 			)
 
 		end
@@ -1274,11 +1732,9 @@ local function ShowEffects()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"特效"
-	)
+	Section("特效")
 
-	CreateToggle(
+	Toggle(
 		"AM 使用者",
 		false,
 		function(enabled)
@@ -1291,13 +1747,13 @@ local function ShowEffects()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"金身",
 		false,
 		function(enabled)
 
 			local character =
-				player.Character
+				GetCharacter()
 
 			if not character then
 				return
@@ -1320,15 +1776,6 @@ local function ShowEffects()
 								40
 							)
 
-					else
-
-						object.Color =
-							Color3.fromRGB(
-								255,
-								255,
-								255
-							)
-
 					end
 
 				end
@@ -1338,13 +1785,13 @@ local function ShowEffects()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"头顶火焰",
 		false,
 		function(enabled)
 
 			local character =
-				player.Character
+				GetCharacter()
 
 			if not character then
 				return
@@ -1365,9 +1812,7 @@ local function ShowEffects()
 				)
 
 			if old then
-
 				old:Destroy()
-
 			end
 
 			if enabled then
@@ -1389,7 +1834,7 @@ local function ShowEffects()
 		end
 	)
 
-	CreateToggle(
+	Toggle(
 		"冰霜移动拖尾",
 		false,
 		function(enabled)
@@ -1412,13 +1857,24 @@ local function ShowSettings()
 
 	ClearContent()
 
-	CreateSectionTitle(
-		"设置"
-	)
+	Section("设置")
 
-	CreateButton(
+	Button(
 		"退出 AM",
 		function()
+
+			if Flying then
+				StopFlight()
+			end
+
+			if InfiniteJumpConnection then
+
+				InfiniteJumpConnection:Disconnect()
+
+				InfiniteJumpConnection =
+					nil
+
+			end
 
 			ScreenGui:Destroy()
 
@@ -1436,36 +1892,35 @@ local Categories = {
 	"通用",
 	"战斗",
 	"娱乐",
-	"FE",
+	"甩飞",
 	"特效",
 	"设置"
 }
 
+local Pages = {}
+
+Pages["信息"] =
+	ShowInfo
+
+Pages["通用"] =
+	ShowGeneral
+
+Pages["战斗"] =
+	ShowCombat
+
+Pages["娱乐"] =
+	ShowEntertainment
+
+Pages["甩飞"] =
+	ShowFling
+
+Pages["特效"] =
+	ShowEffects
+
+Pages["设置"] =
+	ShowSettings
+
 local CategoryButtons = {}
-
-local Pages = {
-
-	["信息"] =
-		ShowInfo,
-
-	["通用"] =
-		ShowGeneral,
-
-	["战斗"] =
-		ShowCombat,
-
-	["娱乐"] =
-		ShowEntertainment,
-
-	["FE"] =
-		ShowFE,
-
-	["特效"] =
-		ShowEffects,
-
-	["设置"] =
-		ShowSettings
-}
 
 local function SelectCategory(name)
 
@@ -1509,20 +1964,13 @@ local function SelectCategory(name)
 
 	end
 
-	local page =
-		Pages[name]
+	if Pages[name] then
 
-	if page then
-
-		page()
+		Pages[name]()
 
 	end
 
 end
-
---==================================================
--- 创建分类按钮
---==================================================
 
 for index, name in ipairs(
 	Categories
@@ -1557,7 +2005,6 @@ for index, name in ipairs(
 	button.Text = name
 
 	button.TextSize = 12
-
 	button.Font =
 		Enum.Font.GothamBold
 
@@ -1569,13 +2016,12 @@ for index, name in ipairs(
 		)
 
 	button.AutoButtonColor = false
-
 	button.ZIndex = 20
 
 	button.Parent =
 		CategoryBar
 
-	AddCorner(button, 8)
+	Corner(button, 8)
 
 	CategoryButtons[name] =
 		button
@@ -1592,14 +2038,11 @@ end
 
 --==================================================
 -- 菜单拖动
--- 只允许拖顶部标题栏
--- 不会挡住下面的按钮
 --==================================================
 
-local menuDragging = false
-
-local menuDragStart
-local menuStartPosition
+local MenuDragging = false
+local MenuDragStart
+local MenuStartPosition
 
 Header.InputBegan:Connect(function(input)
 
@@ -1608,12 +2051,12 @@ Header.InputBegan:Connect(function(input)
 		or input.UserInputType ==
 		Enum.UserInputType.MouseButton1 then
 
-		menuDragging = true
+		MenuDragging = true
 
-		menuDragStart =
+		MenuDragStart =
 			input.Position
 
-		menuStartPosition =
+		MenuStartPosition =
 			Menu.Position
 
 	end
@@ -1622,7 +2065,7 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
 
-	if not menuDragging then
+	if not MenuDragging then
 		return
 	end
 
@@ -1633,16 +2076,16 @@ UserInputService.InputChanged:Connect(function(input)
 
 		local delta =
 			input.Position -
-			menuDragStart
+			MenuDragStart
 
 		Menu.Position =
 			UDim2.new(
-				menuStartPosition.X.Scale,
-				menuStartPosition.X.Offset +
+				MenuStartPosition.X.Scale,
+				MenuStartPosition.X.Offset +
 					delta.X,
 
-				menuStartPosition.Y.Scale,
-				menuStartPosition.Y.Offset +
+				MenuStartPosition.Y.Scale,
+				MenuStartPosition.Y.Offset +
 					delta.Y
 			)
 
@@ -1657,7 +2100,7 @@ UserInputService.InputEnded:Connect(function(input)
 		or input.UserInputType ==
 		Enum.UserInputType.MouseButton1 then
 
-		menuDragging = false
+		MenuDragging = false
 
 	end
 
@@ -1667,12 +2110,10 @@ end)
 -- 悬浮球拖动
 --==================================================
 
-local buttonDragging = false
-
-local buttonDragStart
-local buttonStartPosition
-
-local buttonMoved = false
+local ButtonDragging = false
+local ButtonDragStart
+local ButtonStartPosition
+local ButtonMoved = false
 
 AMButton.InputBegan:Connect(function(input)
 
@@ -1681,14 +2122,13 @@ AMButton.InputBegan:Connect(function(input)
 		or input.UserInputType ==
 		Enum.UserInputType.MouseButton1 then
 
-		buttonDragging = true
+		ButtonDragging = true
+		ButtonMoved = false
 
-		buttonMoved = false
-
-		buttonDragStart =
+		ButtonDragStart =
 			input.Position
 
-		buttonStartPosition =
+		ButtonStartPosition =
 			AMButton.Position
 
 	end
@@ -1697,7 +2137,7 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
 
-	if not buttonDragging then
+	if not ButtonDragging then
 		return
 	end
 
@@ -1708,23 +2148,23 @@ UserInputService.InputChanged:Connect(function(input)
 
 		local delta =
 			input.Position -
-			buttonDragStart
+			ButtonDragStart
 
 		if math.abs(delta.X) > 6
 			or math.abs(delta.Y) > 6 then
 
-			buttonMoved = true
+			ButtonMoved = true
 
 		end
 
 		AMButton.Position =
 			UDim2.new(
-				buttonStartPosition.X.Scale,
-				buttonStartPosition.X.Offset +
+				ButtonStartPosition.X.Scale,
+				ButtonStartPosition.X.Offset +
 					delta.X,
 
-				buttonStartPosition.Y.Scale,
-				buttonStartPosition.Y.Offset +
+				ButtonStartPosition.Y.Scale,
+				ButtonStartPosition.Y.Offset +
 					delta.Y
 			)
 
@@ -1739,41 +2179,116 @@ UserInputService.InputEnded:Connect(function(input)
 		or input.UserInputType ==
 		Enum.UserInputType.MouseButton1 then
 
-		if buttonDragging
-			and not buttonMoved then
+		if ButtonDragging
+			and not ButtonMoved then
 
 			Menu.Visible =
 				not Menu.Visible
 
 		end
 
-		buttonDragging = false
+		ButtonDragging = false
 
 	end
 
 end)
 
 --==================================================
--- 彩色流光
+-- 玩家选择器拖动
 --==================================================
 
-local rotation = 0
+local SelectorDragging = false
+local SelectorDragStart
+local SelectorStartPosition
 
-RunService.RenderStepped:Connect(function(dt)
+SelectorTitle.InputBegan:Connect(function(input)
 
-	rotation =
-		(rotation + dt * 100) % 360
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+		or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
 
-	AMGradient.Rotation =
-		rotation
+		SelectorDragging = true
 
-	MenuGradient.Rotation =
-		rotation
+		SelectorDragStart =
+			input.Position
+
+		SelectorStartPosition =
+			PlayerSelector.Position
+
+	end
+
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if not SelectorDragging then
+		return
+	end
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+		or input.UserInputType ==
+		Enum.UserInputType.MouseMovement then
+
+		local delta =
+			input.Position -
+			SelectorDragStart
+
+		PlayerSelector.Position =
+			UDim2.new(
+				SelectorStartPosition.X.Scale,
+				SelectorStartPosition.X.Offset +
+					delta.X,
+
+				SelectorStartPosition.Y.Scale,
+				SelectorStartPosition.Y.Offset +
+					delta.Y
+			)
+
+	end
+
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+		or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		SelectorDragging = false
+
+	end
 
 end)
 
 --==================================================
--- 默认显示信息
+-- 流光
+--==================================================
+
+local Rotation = 0
+
+RunService.RenderStepped:Connect(
+	function(dt)
+
+		Rotation =
+			(Rotation + dt * 100) % 360
+
+		AMGradient.Rotation =
+			Rotation
+
+		MenuGradient.Rotation =
+			Rotation
+
+		SelectorGradient.Rotation =
+			Rotation
+
+	end
+)
+
+--==================================================
+-- 默认页面
 --==================================================
 
 SelectCategory("信息")
