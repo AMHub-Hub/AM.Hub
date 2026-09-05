@@ -21,7 +21,7 @@ local MENU_HEIGHT = 330
 
 local FLOAT_SIZE = 58
 
-local QQ_GROUP = "你的QQ群号"
+local QQ_GROUP = "179051448"
 
 --==================================================
 -- 状态
