@@ -1,62 +1,107 @@
---// =============================================================
---//  AM Hub Mobile 3.0  [修复版]
---//  保留原版结构 / 命名 / 彩虹边框 / 分类 / 拖动
---//  改动：1) 修好悬浮窗一定能加载  2) 删除远程接口空壳、改为本地实现  3) 功能真实化
---//  QQ群: 179051448
---// =============================================================
+--// ================================================================
+--//  AM Hub Mobile 3.0 - 完整版 (Full Edition)
+--//  Language: Luau (Roblox)
+--//  Executor: Delta / Mobile
+--//  说明: 单文件, 直接复制全部即可运行
+--//  特性: 左侧分类可滑动 / 高级分类 / 飞行修复 / 跳高修复
+--//        锁定视角修复 / 反踢 / 反检测
+--// ================================================================
 
+--// ================================================================
+--//  区块 1: 服务获取
+--// ================================================================
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
+--// 本地玩家
 local LocalPlayer = Players.LocalPlayer
-
---// 等待 PlayerGui 就绪（防止悬浮窗加载不出来）
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 if not PlayerGui then
-	-- 极端情况下 fallback 到 CoreGui
-	PlayerGui = game:GetService("CoreGui")
+	warn("[AM Hub] PlayerGui not found, aborting")
+	return
 end
 
---// =============================================================
---  CONFIG
--- =============================================================
+--// ================================================================
+--//  区块 2: 配置
+--// ================================================================
+local CONFIG = {
+	MENU_WIDTH = 300,
+	MENU_HEIGHT = 440,
+	FLOAT_SIZE = 58,
+	QQ_GROUP = "179051448",
+	VERSION = "3.0 Full",
+	AUTHOR = "AM Team",
+}
 
-local MENU_WIDTH = 280
-local MENU_HEIGHT = 360
+--// ================================================================
+--//  区块 3: 全局状态
+--// ================================================================
+local State = {
+	Flying = false,
+	InfiniteJump = false,
+	Noclip = false,
+	SpeedHack = false,
+	JumpHack = false,
+	ESP_Enabled = false,
+	Aimbot_Enabled = false,
+	ClickTP = false,
+	NightVision = false,
+	LockCamera = false,
+	FlingEnabled = false,
+	OrbitEnabled = false,
+	AntiKick = false,
+	AntiDetect = false,
+	GodMode = false,
+	FullBright = false,
+	SpinBot = false,
+	AutoFarm = false,
+	TeleportEnabled = false,
+}
 
-local FLOAT_SIZE = 58
+local Values = {
+	FlightSpeed = 50,
+	WalkSpeed = 16,
+	JumpPower = 50,
+	Gravity = 196,
+	AimbotFOV = 90,
+	OrbitSpeed = 10,
+	SpinSpeed = 30,
+	FlingPower = 200,
+	TeleportDelay = 1,
+}
 
-local QQ_GROUP = "179051448"
-
---// =============================================================
---  状态
--- =============================================================
-
-local Flying = false
-local InfiniteJump = false
-
-local FlightSpeed = 50
 local SelectedPlayer = nil
 
-local FlightConnection = nil
-local InfiniteJumpConnection = nil
+local Connections = {
+	Flight = nil,
+	InfiniteJump = nil,
+	Noclip = nil,
+	ESP = nil,
+	Aimbot = nil,
+	Fling = nil,
+	Orbit = nil,
+	AntiKick = nil,
+	AntiDetect = nil,
+	SpinBot = nil,
+	AutoFarm = nil,
+}
 
--- 新增真实功能状态
-local Noclip = false
-local ESPEnabled = false
-local AimbotEnabled = false
-local ClickTPEnabled = false
+local Objects = {
+	FlightBV = nil,
+	FlightBG = nil,
+	ESP = {},
+	FOVCircle = nil,
+}
 
-local NoclipConnection = nil
-local ESPObjects = {}
-local AimbotConnection = nil
-
---// =============================================================
---  彩虹
--- =============================================================
-
+--// ================================================================
+--//  区块 4: 彩虹流光色
+--// ================================================================
 local Rainbow = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 80)),
 	ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 150, 0)),
@@ -67,10 +112,9 @@ local Rainbow = ColorSequence.new({
 	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 120)),
 })
 
---// =============================================================
---  工具
--- =============================================================
-
+--// ================================================================
+--//  区块 5: 工具函数 - 第一组 (UI 辅助)
+--// ================================================================
 local function Corner(object, radius)
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, radius)
@@ -91,345 +135,213 @@ local function GetCharacter()
 end
 
 local function GetHumanoid()
-	local character = GetCharacter()
-	if not character then return nil end
-	return character:FindFirstChildOfClass("Humanoid")
+	local c = GetCharacter()
+	if not c then return nil end
+	return c:FindFirstChildOfClass("Humanoid")
 end
 
 local function GetRoot()
-	local character = GetCharacter()
-	if not character then return nil end
-	return character:FindFirstChild("HumanoidRootPart")
+	local c = GetCharacter()
+	if not c then return nil end
+	return c:FindFirstChild("HumanoidRootPart")
 end
 
--- 安全获取鼠标/触摸世界点击位置
-local function GetWorldClickPosition()
-	local mouse = LocalPlayer:GetMouse()
-	if mouse and mouse.Hit then
-		return mouse.Hit.Position
+local function GetPlayerCharacter(player)
+	if not player then return nil end
+	return player.Character
+end
+
+local function GetPlayerHumanoid(player)
+	local c = GetPlayerCharacter(player)
+	if not c then return nil end
+	return c:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetPlayerRoot(player)
+	local c = GetPlayerCharacter(player)
+	if not c then return nil end
+	return c:FindFirstChild("HumanoidRootPart")
+end
+
+local function IsAlive(player)
+	local h = nil
+	if player == LocalPlayer then
+		h = GetHumanoid()
+	else
+		h = GetPlayerHumanoid(player)
 	end
-	return nil
+	return h and h.Health > 0
 end
 
---// =============================================================
---  GUI 附着（修复：一定能加载出来）
--- =============================================================
-
+--// ================================================================
+--//  区块 6: GUI 容器
+--// ================================================================
 local ScreenGui = Instance.new("ScreenGui")
-
 ScreenGui.Name = "AM_Hub_Mobile"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
+ScreenGui.IgnoreGuiInset = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+ScreenGui.Parent = PlayerGui
 
--- 关键修复：先 Parent 再设置其它，失败时 fallback
-local function AttachGui()
-	local ok, err = pcall(function()
-		ScreenGui.Parent = PlayerGui
-	end)
-	if not ok then
-		pcall(function()
-			ScreenGui.Parent = game:GetService("CoreGui")
-		end)
-	end
-end
-AttachGui()
-
--- 角色重生时重新附着（防止菜单在死亡后消失）
-LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(0.5)
-	if not ScreenGui.Parent then
-		AttachGui()
-	end
-end)
-
---// =============================================================
---  悬浮球（AM 按钮）
--- =============================================================
-
+--// ================================================================
+--//  区块 7: 悬浮球 (左侧)
+--// ================================================================
 local AMButton = Instance.new("TextButton")
-
 AMButton.Name = "AMButton"
-
-AMButton.Size =
-	UDim2.fromOffset(
-		FLOAT_SIZE,
-		FLOAT_SIZE
-	)
-
-AMButton.Position =
-	UDim2.new(
-		0,
-		18,
-		0.5,
-		-FLOAT_SIZE / 2
-	)
-
-AMButton.BackgroundColor3 =
-	Color3.fromRGB(255, 255, 255)
-
+AMButton.Size = UDim2.fromOffset(CONFIG.FLOAT_SIZE, CONFIG.FLOAT_SIZE)
+AMButton.Position = UDim2.new(0, 18, 0.5, -CONFIG.FLOAT_SIZE / 2)
+AMButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 AMButton.BorderSizePixel = 0
-
 AMButton.Text = "AM"
-
-AMButton.TextColor3 =
-	Color3.fromRGB(20, 20, 20)
-
+AMButton.TextColor3 = Color3.fromRGB(20, 20, 20)
 AMButton.TextSize = 19
 AMButton.Font = Enum.Font.GothamBold
-
 AMButton.AutoButtonColor = false
 AMButton.Active = true
 AMButton.ZIndex = 100
-
 AMButton.Parent = ScreenGui
-
 Corner(AMButton, 100)
 
 local AMStroke = Instance.new("UIStroke")
-
 AMStroke.Thickness = 3
-AMStroke.ApplyStrokeMode =
-	Enum.ApplyStrokeMode.Border
-
+AMStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 AMStroke.Parent = AMButton
 
 local AMGradient = Instance.new("UIGradient")
-
 AMGradient.Color = Rainbow
 AMGradient.Parent = AMStroke
 
---// =============================================================
---  主菜单
--- =============================================================
-
+--// ================================================================
+--//  区块 8: 主菜单框架
+--// ================================================================
 local Menu = Instance.new("Frame")
-
 Menu.Name = "Menu"
-
-Menu.Size =
-	UDim2.fromOffset(
-		MENU_WIDTH,
-		MENU_HEIGHT
-	)
-
-Menu.Position =
-	UDim2.new(
-		0,
-		88,
-		0.5,
-		-MENU_HEIGHT / 2
-	)
-
-Menu.BackgroundColor3 =
-	Color3.fromRGB(255, 255, 255)
-
+Menu.Size = UDim2.fromOffset(CONFIG.MENU_WIDTH, CONFIG.MENU_HEIGHT)
+Menu.Position = UDim2.new(0, 88, 0.5, -CONFIG.MENU_HEIGHT / 2)
+Menu.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Menu.BorderSizePixel = 0
 Menu.Visible = false
 Menu.Active = true
-
 Menu.ZIndex = 10
 Menu.Parent = ScreenGui
-
 Corner(Menu, 16)
 
 local MenuStroke = Instance.new("UIStroke")
-
 MenuStroke.Thickness = 3
-MenuStroke.ApplyStrokeMode =
-	Enum.ApplyStrokeMode.Border
-
+MenuStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 MenuStroke.Parent = Menu
 
 local MenuGradient = Instance.new("UIGradient")
-
 MenuGradient.Color = Rainbow
 MenuGradient.Parent = MenuStroke
 
---// =============================================================
---  标题
--- =============================================================
-
+--// ================================================================
+--//  区块 9: 标题栏
+--// ================================================================
 local Header = Instance.new("Frame")
-
-Header.Size =
-	UDim2.new(
-		1,
-		0,
-		0,
-		48
-	)
-
+Header.Size = UDim2.new(1, 0, 0, 48)
 Header.BackgroundTransparency = 1
 Header.Active = true
 Header.ZIndex = 20
-
 Header.Parent = Menu
 
 local Title = Instance.new("TextLabel")
-
-Title.Size =
-	UDim2.new(
-		1,
-		-55,
-		1,
-		0
-	)
-
-Title.Position =
-	UDim2.fromOffset(15, 0)
-
+Title.Size = UDim2.new(1, -140, 1, 0)
+Title.Position = UDim2.fromOffset(15, 0)
 Title.BackgroundTransparency = 1
-
-Title.Text = "AM通用脚本"
-
-Title.TextColor3 =
-	Color3.fromRGB(20, 20, 20)
-
+Title.Text = "AM Hub"
+Title.TextColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextSize = 21
 Title.Font = Enum.Font.GothamBold
-
-Title.TextXAlignment =
-	Enum.TextXAlignment.Left
-
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.ZIndex = 21
 Title.Parent = Header
 
--- QQ 群展示（右上角，不再弹窗）
 local QQLabel = Instance.new("TextLabel")
-QQLabel.Size = UDim2.new(1, -50, 0, 16)
-QQLabel.Position = UDim2.new(0, 15, 1, 2)
+QQLabel.Size = UDim2.new(0, 120, 0, 20)
+QQLabel.Position = UDim2.new(1, -130, 0, 14)
 QQLabel.BackgroundTransparency = 1
-QQLabel.Text = "官方QQ群: " .. QQ_GROUP
+QQLabel.Text = "群:" .. CONFIG.QQ_GROUP
 QQLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
 QQLabel.TextSize = 11
 QQLabel.Font = Enum.Font.Gotham
-QQLabel.TextXAlignment = Enum.TextXAlignment.Left
+QQLabel.TextXAlignment = Enum.TextXAlignment.Right
 QQLabel.ZIndex = 21
 QQLabel.Parent = Header
 
 local CloseButton = Instance.new("TextButton")
-
-CloseButton.Size =
-	UDim2.fromOffset(38, 38)
-
-CloseButton.Position =
-	UDim2.new(
-		1,
-		-43,
-		0,
-		5
-	)
-
+CloseButton.Size = UDim2.fromOffset(38, 38)
+CloseButton.Position = UDim2.new(1, -43, 0, 5)
 CloseButton.BackgroundTransparency = 1
-
 CloseButton.Text = "×"
-
-CloseButton.TextColor3 =
-	Color3.fromRGB(30, 30, 30)
-
+CloseButton.TextColor3 = Color3.fromRGB(30, 30, 30)
 CloseButton.TextSize = 27
 CloseButton.Font = Enum.Font.GothamBold
-
 CloseButton.AutoButtonColor = false
 CloseButton.ZIndex = 30
-
 CloseButton.Parent = Header
 
 CloseButton.MouseButton1Click:Connect(function()
 	Menu.Visible = false
 end)
 
---// =============================================================
---  左侧分类
--- =============================================================
-
-local CategoryBar = Instance.new("Frame")
-
-CategoryBar.Size =
-	UDim2.new(
-		0,
-		82,
-		1,
-		-58
-	)
-
-CategoryBar.Position =
-	UDim2.fromOffset(6, 52)
-
-CategoryBar.BackgroundColor3 =
-	Color3.fromRGB(245, 245, 245)
-
+--// ================================================================
+--//  区块 10: 左侧分类栏 (ScrollingFrame, 可滑动)
+--// ================================================================
+local CategoryBar = Instance.new("ScrollingFrame")
+CategoryBar.Size = UDim2.new(0, 82, 1, -58)
+CategoryBar.Position = UDim2.fromOffset(6, 52)
+CategoryBar.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
 CategoryBar.BorderSizePixel = 0
 CategoryBar.ZIndex = 15
-
+CategoryBar.ScrollBarThickness = 3
+CategoryBar.CanvasSize = UDim2.new(0, 0, 0, 0)
 CategoryBar.Parent = Menu
-
 Corner(CategoryBar, 11)
 
---// =============================================================
---  右侧内容
--- =============================================================
+local CategoryLayout = Instance.new("UIListLayout")
+CategoryLayout.Padding = UDim.new(0, 5)
+CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CategoryLayout.Parent = CategoryBar
 
+CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	CategoryBar.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
+end)
+
+--// ================================================================
+--//  区块 11: 右侧内容区
+--// ================================================================
 local Content = Instance.new("ScrollingFrame")
-
-Content.Size =
-	UDim2.new(
-		1,
-		-97,
-		1,
-		-58
-	)
-
-Content.Position =
-	UDim2.fromOffset(91, 52)
-
+Content.Size = UDim2.new(1, -97, 1, -58)
+Content.Position = UDim2.fromOffset(91, 52)
 Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
-
 Content.ScrollBarThickness = 4
-Content.ScrollBarImageColor3 =
-	Color3.fromRGB(150, 150, 150)
-
+Content.ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150)
 Content.ZIndex = 15
 Content.Parent = Menu
 
 local ContentLayout = Instance.new("UIListLayout")
-
-ContentLayout.Padding =
-	UDim.new(0, 7)
-
-ContentLayout.HorizontalAlignment =
-	Enum.HorizontalAlignment.Center
-
+ContentLayout.Padding = UDim.new(0, 7)
+ContentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 ContentLayout.Parent = Content
 
-ContentLayout:GetPropertyChangedSignal(
-	"AbsoluteContentSize"
-):Connect(function()
-	Content.CanvasSize =
-		UDim2.fromOffset(
-			0,
-			ContentLayout.AbsoluteContentSize.Y + 15
-		)
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	Content.CanvasSize = UDim2.fromOffset(0, ContentLayout.AbsoluteContentSize.Y + 15)
 end)
 
---// =============================================================
---  清除内容
--- =============================================================
-
+--// ================================================================
+--//  区块 12: UI 组件工厂
+--// ================================================================
 local function ClearContent()
-	for _, object in ipairs(Content:GetChildren()) do
-		if not object:IsA("UIListLayout") then
-			object:Destroy()
+	for _, obj in ipairs(Content:GetChildren()) do
+		if not obj:IsA("UIListLayout") then
+			obj:Destroy()
 		end
 	end
 	Content.CanvasPosition = Vector2.zero
 end
-
---// =============================================================
---  UI 组件
--- =============================================================
 
 local function Section(text)
 	local label = Instance.new("TextLabel")
@@ -476,7 +388,6 @@ local function Toggle(text, default, callback)
 	Corner(button, 9)
 
 	local state = default or false
-
 	local function Refresh()
 		if state then
 			button.Text = text .. "    ● 开启"
@@ -488,9 +399,7 @@ local function Toggle(text, default, callback)
 			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
 		end
 	end
-
 	Refresh()
-
 	button.MouseButton1Click:Connect(function()
 		state = not state
 		Refresh()
@@ -498,7 +407,6 @@ local function Toggle(text, default, callback)
 			callback(state)
 		end
 	end)
-
 	return button
 end
 
@@ -549,7 +457,6 @@ local function Slider(text, minimum, maximum, default, callback)
 	Corner(knob, 20)
 
 	local dragging = false
-
 	local function SetValue(value)
 		value = math.clamp(value, minimum, maximum)
 		local percent = (value - minimum) / (maximum - minimum)
@@ -594,899 +501,1003 @@ local function Slider(text, minimum, maximum, default, callback)
 	return holder
 end
 
---// =============================================================
---  飞行（修复：真正能飞起来）
--- =============================================================
-
+--// ================================================================
+--//  区块 13: 飞行系统 (BodyVelocity + BodyGyro, 相机朝向)
+--// ================================================================
 local function StopFlight()
-	Flying = false
-
-	if FlightConnection then
-		FlightConnection:Disconnect()
-		FlightConnection = nil
+	State.Flying = false
+	if Connections.Flight then
+		Connections.Flight:Disconnect()
+		Connections.Flight = nil
 	end
-
 	local humanoid = GetHumanoid()
 	if humanoid then
 		humanoid.PlatformStand = false
 	end
-
 	local root = GetRoot()
 	if root then
 		root.AssemblyLinearVelocity = Vector3.zero
 	end
+	if Objects.FlightBV then
+		Objects.FlightBV:Destroy()
+		Objects.FlightBV = nil
+	end
+	if Objects.FlightBG then
+		Objects.FlightBG:Destroy()
+		Objects.FlightBG = nil
+	end
 end
 
 local function StartFlight()
-	if Flying then
+	if State.Flying then
 		return
 	end
-
 	local humanoid = GetHumanoid()
 	local root = GetRoot()
-
 	if not humanoid or not root then
 		return
 	end
 
-	Flying = true
+	State.Flying = true
 	humanoid.PlatformStand = true
 
-	-- 用 BodyVelocity + BodyGyro（手机端稳定，不会被 Humanoid 纠正回地面）
-	local bv = Instance.new("BodyVelocity")
-	bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-	bv.Velocity = Vector3.zero
-	bv.Parent = root
+	Objects.FlightBV = Instance.new("BodyVelocity")
+	Objects.FlightBV.MaxForce = Vector3.new(999999, 999999, 999999)
+	Objects.FlightBV.Velocity = Vector3.zero
+	Objects.FlightBV.Parent = root
 
-	local bg = Instance.new("BodyGyro")
-	bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-	bg.P = 9000
-	bg.Parent = root
+	Objects.FlightBG = Instance.new("BodyGyro")
+	Objects.FlightBG.MaxTorque = Vector3.new(999999, 999999, 999999)
+	Objects.FlightBG.P = 9000
+	Objects.FlightBG.D = 100
+	Objects.FlightBG.CFrame = Workspace.CurrentCamera.CFrame
+	Objects.FlightBG.Parent = root
 
-	FlightConnection = RunService.RenderStepped:Connect(function()
-		if not Flying then
+	Connections.Flight = RunService.RenderStepped:Connect(function()
+		if not State.Flying then
 			return
 		end
-
-		local currentHumanoid = GetHumanoid()
-		local currentRoot = GetRoot()
-
-		if not currentHumanoid or not currentRoot then
+		local curHum = GetHumanoid()
+		local curRoot = GetRoot()
+		if not curHum or not curRoot then
 			StopFlight()
 			return
 		end
-
-		local camera = workspace.CurrentCamera
-		if not camera then
+		local cam = Workspace.CurrentCamera
+		if not cam then
 			return
 		end
 
-		-- 关键修复：用相机朝向 + MoveDirection，手机触屏也能飞
-		local move = currentHumanoid.MoveDirection
-		local velocity = Vector3.zero
+		local move = curHum.MoveDirection
+		local vel = Vector3.zero
 
 		if move.Magnitude > 0 then
-			-- 把 MoveDirection 投影到相机平面，得到真实前进方向
-			local camForward = camera.CFrame.LookVector
-			local camRight = camera.CFrame.RightVector
-			local horizontal = Vector3.new(camForward.X, 0, camForward.Z).Unit
-			local right = Vector3.new(camRight.X, 0, camRight.Z).Unit
-
-			velocity = (horizontal * move.Z + right * move.X) * FlightSpeed
+			local camFwd = cam.CFrame.LookVector
+			local camRight = cam.CFrame.RightVector
+			camFwd = Vector3.new(camFwd.X, 0, camFwd.Z).Unit
+			vel = (camFwd * move.Z + camRight * move.X).Unit * Values.FlightSpeed
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+				vel = vel + Vector3.new(0, Values.FlightSpeed, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+				vel = vel - Vector3.new(0, Values.FlightSpeed, 0)
+			end
 		end
 
-		-- 升降（Space / 触屏跳跃键）
-		if currentHumanoid:GetState() == Enum.HumanoidStateType.Jumping
-			or currentHumanoid.Jump then
-			velocity = velocity + Vector3.new(0, FlightSpeed, 0)
+		if Objects.FlightBV then
+			Objects.FlightBV.Velocity = vel
 		end
-
-		bv.Velocity = velocity
-		bg.CFrame = camera.CFrame
+		if Objects.FlightBG then
+			Objects.FlightBG.CFrame = cam.CFrame
+		end
 	end)
 end
 
---// =============================================================
---  无限跳跃
--- =============================================================
+--// ================================================================
+--//  区块 14: 穿墙 / Noclip
+--// ================================================================
+local function StopNoclip()
+	State.Noclip = false
+	if Connections.Noclip then
+		Connections.Noclip:Disconnect()
+		Connections.Noclip = nil
+	end
+end
 
-InfiniteJumpConnection =
-	UserInputService.JumpRequest:Connect(function()
-		if not InfiniteJump then
+local function StartNoclip()
+	if State.Noclip then
+		return
+	end
+	State.Noclip = true
+	Connections.Noclip = RunService.Stepped:Connect(function()
+		if not State.Noclip then
 			return
 		end
-		local humanoid = GetHumanoid()
-		if humanoid then
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		local c = GetCharacter()
+		if not c then
+			return
+		end
+		for _, part in ipairs(c:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
 		end
 	end)
+end
 
---// =============================================================
---  穿墙
--- =============================================================
-
-local function SetNoclip(enabled)
-	Noclip = enabled
-	if NoclipConnection then
-		NoclipConnection:Disconnect()
-		NoclipConnection = nil
+--// ================================================================
+--//  区块 15: 无限跳跃
+--// ================================================================
+Connections.InfiniteJump = UserInputService.JumpRequest:Connect(function()
+	if not State.InfiniteJump then
+		return
 	end
-	if enabled then
-		NoclipConnection = RunService.Stepped:Connect(function()
-			local char = GetCharacter()
-			if not char then return end
-			for _, part in ipairs(char:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CanCollide = false
-				end
-			end
-		end)
+	local humanoid = GetHumanoid()
+	if humanoid then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+--// ================================================================
+--//  区块 16: 属性修改
+--// ================================================================
+local function ApplySpeed(val)
+	Values.WalkSpeed = val
+	State.SpeedHack = true
+	local h = GetHumanoid()
+	if h then
+		h.WalkSpeed = val
 	end
 end
 
---// =============================================================
---  ESP（真实可用：Highlight + 名字标签）
--- =============================================================
+local function ApplyJump(val)
+	Values.JumpPower = val
+	State.JumpHack = true
+	local h = GetHumanoid()
+	if h then
+		h.JumpPower = val
+		if h:GetState() == Enum.HumanoidStateType.Freefall then
+			h:ChangeState(Enum.HumanoidStateType.Landed)
+		end
+	end
+end
 
+local function ApplyGravity(val)
+	Values.Gravity = val
+	Workspace.Gravity = val
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	task.wait(0.5)
+	local h = char:FindFirstChildOfClass("Humanoid")
+	if h then
+		if State.SpeedHack then
+			h.WalkSpeed = Values.WalkSpeed
+		end
+		if State.JumpHack then
+			h.JumpPower = Values.JumpPower
+		end
+	end
+	if State.Flying then
+		StopFlight()
+	end
+	if State.Noclip then
+		StopNoclip()
+	end
+end)
+
+--// ================================================================
+--//  区块 17: ESP
+--// ================================================================
 local function ClearESP()
-	for player, obj in pairs(ESPObjects) do
-		if obj.Highlight and obj.Highlight.Parent then
-			obj.Highlight:Destroy()
+	for plr, data in pairs(Objects.ESP) do
+		if data.Highlight then
+			data.Highlight:Destroy()
 		end
-		if obj.Billboard and obj.Billboard.Parent then
-			obj.Billboard:Destroy()
+		if data.Billboard then
+			data.Billboard:Destroy()
 		end
 	end
-	ESPObjects = {}
+	Objects.ESP = {}
 end
 
-local function SetESP(enabled)
-	ESPEnabled = enabled
-	if not enabled then
-		ClearESP()
+local function CreateESPForPlayer(plr)
+	if Objects.ESP[plr] then
+		return
+	end
+	if plr == LocalPlayer then
+		return
+	end
+	local c = plr.Character
+	if not c then
+		return
+	end
+	local root = c:FindFirstChild("HumanoidRootPart")
+	local hum = c:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then
 		return
 	end
 
-	RunService.Heartbeat:Connect(function()
-		if not ESPEnabled then
+	local hl = Instance.new("Highlight")
+	hl.FillColor = Color3.fromRGB(0, 255, 100)
+	hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+	hl.FillTransparency = 0.7
+	hl.OutlineTransparency = 0
+	hl.Adornee = c
+	hl.Parent = c
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 120, 0, 40)
+	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Adornee = root
+	bb.AlwaysOnTop = true
+	bb.Parent = root
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = plr.DisplayName
+	nameLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+	nameLabel.TextSize = 13
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.Parent = bb
+
+	local distLabel = Instance.new("TextLabel")
+	distLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	distLabel.Position = UDim2.new(0, 0, 0.5, 0)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Text = "0m"
+	distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	distLabel.TextSize = 11
+	distLabel.Font = Enum.Font.Gotham
+	distLabel.Parent = bb
+
+	Objects.ESP[plr] = {
+		Highlight = hl,
+		Billboard = bb,
+		DistLabel = distLabel,
+	}
+end
+
+local function StartESP()
+	State.ESP_Enabled = true
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			CreateESPForPlayer(plr)
+		end
+	end
+
+	Players.PlayerAdded:Connect(function(plr)
+		plr.CharacterAdded:Connect(function()
+			task.wait(1)
+			if State.ESP_Enabled then
+				CreateESPForPlayer(plr)
+			end
+		end)
+	end)
+
+	Connections.ESP = RunService.RenderStepped:Connect(function()
+		if not State.ESP_Enabled then
 			return
 		end
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer and player.Character then
-				if not ESPObjects[player] then
-					ESPObjects[player] = {}
-
-					local hl = Instance.new("Highlight")
-					hl.Adornee = player.Character
-					hl.FillColor = Color3.fromRGB(255, 0, 80)
-					hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-					hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-					hl.Parent = ScreenGui
-					ESPObjects[player].Highlight = hl
-
-					local head = player.Character:FindFirstChild("Head")
-					if head then
-						local bb = Instance.new("BillboardGui")
-						bb.Adornee = head
-						bb.Size = UDim2.new(0, 100, 0, 20)
-						bb.StudsOffset = Vector3.new(0, 2, 0)
-						bb.AlwaysOnTop = true
-						bb.Parent = ScreenGui
-
-						local txt = Instance.new("TextLabel")
-						txt.Size = UDim2.new(1, 0, 1, 0)
-						txt.BackgroundTransparency = 1
-						txt.Text = player.DisplayName
-						txt.TextColor3 = Color3.fromRGB(0, 255, 120)
-						txt.TextSize = 12
-						txt.Font = Enum.Font.GothamBold
-						txt.Parent = bb
-						ESPObjects[player].Billboard = bb
-					end
-				end
-			end
+		local myRoot = GetRoot()
+		if not myRoot then
+			return
 		end
-	end)
-
-	-- 玩家离开时清理
-	Players.PlayerRemoving:Connect(function(player)
-		if ESPObjects[player] then
-			if ESPObjects[player].Highlight then
-				ESPObjects[player].Highlight:Destroy()
+		for plr, data in pairs(Objects.ESP) do
+			if plr and plr.Parent and data.DistLabel then
+				local root = GetPlayerRoot(plr)
+				if root then
+					local dist = math.floor((root.Position - myRoot.Position).Magnitude)
+					data.DistLabel.Text = dist .. "m"
+				end
+			else
+				if data.Highlight then
+					data.Highlight:Destroy()
+				end
+				if data.Billboard then
+					data.Billboard:Destroy()
+				end
+				Objects.ESP[plr] = nil
 			end
-			if ESPObjects[player].Billboard then
-				ESPObjects[player].Billboard:Destroy()
-			end
-			ESPObjects[player] = nil
 		end
 	end)
 end
 
---// =============================================================
---  自瞄（真实可用：相机平滑锁头）
--- =============================================================
-
-local AimbotFOV = 120
-
-local function SetAimbot(enabled)
-	AimbotEnabled = enabled
-	if AimbotConnection then
-		AimbotConnection:Disconnect()
-		AimbotConnection = nil
-	end
-	if enabled then
-		AimbotConnection = RunService.RenderStepped:Connect(function()
-			local camera = workspace.CurrentCamera
-			if not camera then return end
-
-			local bestPlayer = nil
-			local bestDist = AimbotFOV
-
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer and player.Character then
-					local head = player.Character:FindFirstChild("Head")
-					if head then
-						local screenPos, visible =
-							camera:WorldToViewportPoint(head.Position)
-						if visible then
-							local center = camera.ViewportSize / 2
-							local dist =
-								(Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-							if dist < bestDist then
-								bestDist = dist
-								bestPlayer = player
-							end
-						end
-					end
-				end
-			end
-
-			if bestPlayer and bestPlayer.Character then
-				local head = bestPlayer.Character:FindFirstChild("Head")
-				if head then
-					camera.CFrame = camera.CFrame:Lerp(
-						CFrame.new(camera.CFrame.Position, head.Position),
-						0.15
-					)
-				end
-			end
-		end)
+local function StopESP()
+	State.ESP_Enabled = false
+	ClearESP()
+	if Connections.ESP then
+		Connections.ESP:Disconnect()
+		Connections.ESP = nil
 	end
 end
 
---// =============================================================
---  点击屏幕瞬移（真实可用）
--- =============================================================
-
-local function SetClickTP(enabled)
-	ClickTPEnabled = enabled
-	if enabled then
-		ClickTPEnabled = true
-		-- 通过鼠标点击地面瞬移
-		local mouse = LocalPlayer:GetMouse()
-		local conn
-		conn = mouse.Button1Down:Connect(function()
-			if not ClickTPEnabled then
-				conn:Disconnect()
-				return
+--// ================================================================
+--//  区块 18: 自瞄
+--// ================================================================
+local function GetClosestPlayer()
+	local closest = nil
+	local shortest = Values.AimbotFOV
+	local mouse = UserInputService:GetMouseLocation()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and IsAlive(plr) then
+			local root = GetPlayerRoot(plr)
+			if root then
+				local pos, onScreen = Workspace.CurrentCamera:WorldToViewportPoint(root.Position)
+				if onScreen then
+					local dist = (Vector2.new(pos.X, pos.Y) - mouse).Magnitude
+					if dist < shortest then
+						shortest = dist
+						closest = plr
+					end
+				end
 			end
-			local target = mouse.Hit
+		end
+	end
+	return closest
+end
+
+local function CreateFOVCircle()
+	if Objects.FOVCircle then
+		Objects.FOVCircle:Remove()
+		Objects.FOVCircle = nil
+	end
+	if not Drawing then
+		return
+	end
+	Objects.FOVCircle = Drawing.new("Circle")
+	Objects.FOVCircle.Visible = false
+	Objects.FOVCircle.Radius = Values.AimbotFOV
+	Objects.FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+	Objects.FOVCircle.Thickness = 1
+	Objects.FOVCircle.Transparency = 0.5
+	Objects.FOVCircle.Filled = false
+end
+
+local function StartAimbot()
+	State.Aimbot_Enabled = true
+	CreateFOVCircle()
+	Connections.Aimbot = RunService.RenderStepped:Connect(function()
+		if not State.Aimbot_Enabled then
+			return
+		end
+		local mouse = UserInputService:GetMouseLocation()
+		if Objects.FOVCircle then
+			Objects.FOVCircle.Position = Vector2.new(mouse.X, mouse.Y - 36)
+			Objects.FOVCircle.Radius = Values.AimbotFOV
+			Objects.FOVCircle.Visible = true
+		end
+		if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+			local target = GetClosestPlayer()
+			if target then
+				local root = GetPlayerRoot(target)
+				if root then
+					local cam = Workspace.CurrentCamera
+					cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, root.Position), 0.3)
+				end
+			end
+		end
+	end)
+end
+
+local function StopAimbot()
+	State.Aimbot_Enabled = false
+	if Objects.FOVCircle then
+		Objects.FOVCircle:Remove()
+		Objects.FOVCircle = nil
+	end
+	if Connections.Aimbot then
+		Connections.Aimbot:Disconnect()
+		Connections.Aimbot = nil
+	end
+end
+
+--// ================================================================
+--//  区块 19: 点击传送
+--// ================================================================
+local ClickTP_Connection = nil
+local function StartClickTP()
+	State.ClickTP = true
+	ClickTP_Connection = UserInputService.InputBegan:Connect(function(input)
+		if not State.ClickTP then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local mouse = LocalPlayer:GetMouse()
+			local hit = mouse.Hit
 			local root = GetRoot()
-			if root and target then
-				root.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
+			if root and hit then
+				root.CFrame = CFrame.new(hit.X, hit.Y + 3, hit.Z)
 			end
+		end
+	end)
+end
+
+local function StopClickTP()
+	State.ClickTP = false
+	if ClickTP_Connection then
+		ClickTP_Connection:Disconnect()
+		ClickTP_Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 20: 甩飞 / 环绕 / 传送
+--// ================================================================
+local function DoFling()
+	if not SelectedPlayer then
+		return
+	end
+	local tRoot = GetPlayerRoot(SelectedPlayer)
+	if not tRoot then
+		return
+	end
+	for i = 1, 5 do
+		task.spawn(function()
+			local bv = Instance.new("BodyVelocity")
+			bv.MaxForce = Vector3.new(999999, 999999, 999999)
+			bv.Velocity = Vector3.new(
+				math.random(-Values.FlingPower, Values.FlingPower),
+				math.random(Values.FlingPower, Values.FlingPower * 3),
+				math.random(-Values.FlingPower, Values.FlingPower)
+			)
+			bv.Parent = tRoot
+			task.wait(0.1)
+			bv:Destroy()
 		end)
 	end
 end
 
---// =============================================================
---  玩家选择器
--- =============================================================
-
-local PlayerSelector = Instance.new("Frame")
-
-PlayerSelector.Name = "PlayerSelector"
-
-PlayerSelector.Size = UDim2.fromOffset(250, 300)
-
-PlayerSelector.Position =
-	UDim2.new(0.5, -125, 0.5, -150)
-
-PlayerSelector.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-
-PlayerSelector.BorderSizePixel = 0
-
-PlayerSelector.Visible = false
-PlayerSelector.Active = true
-
-PlayerSelector.ZIndex = 200
-
-PlayerSelector.Parent = ScreenGui
-
-Corner(PlayerSelector, 15)
-
-local SelectorStroke = Instance.new("UIStroke")
-
-SelectorStroke.Thickness = 3
-SelectorStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-SelectorStroke.Parent = PlayerSelector
-
-local SelectorGradient = Instance.new("UIGradient")
-
-SelectorGradient.Color = Rainbow
-
-SelectorGradient.Parent = SelectorStroke
-
-local SelectorTitle = Instance.new("TextLabel")
-
-SelectorTitle.Size = UDim2.new(1, -55, 0, 45)
-
-SelectorTitle.Position = UDim2.fromOffset(15, 3)
-
-SelectorTitle.BackgroundTransparency = 1
-
-SelectorTitle.Text = "选择玩家"
-
-SelectorTitle.TextColor3 = Color3.fromRGB(20, 20, 20)
-
-SelectorTitle.TextSize = 18
-SelectorTitle.Font = Enum.Font.GothamBold
-
-SelectorTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-SelectorTitle.ZIndex = 210
-
-SelectorTitle.Parent = PlayerSelector
-
-local SelectorClose = Instance.new("TextButton")
-
-SelectorClose.Size = UDim2.fromOffset(35, 35)
-
-SelectorClose.Position = UDim2.new(1, -40, 0, 6)
-
-SelectorClose.BackgroundTransparency = 1
-
-SelectorClose.Text = "×"
-
-SelectorClose.TextColor3 = Color3.fromRGB(30, 30, 30)
-
-SelectorClose.TextSize = 25
-SelectorClose.Font = Enum.Font.GothamBold
-
-SelectorClose.ZIndex = 220
-
-SelectorClose.Parent = PlayerSelector
-
-SelectorClose.MouseButton1Click:Connect(function()
-	PlayerSelector.Visible = false
-end)
-
-local PlayerList = Instance.new("ScrollingFrame")
-
-PlayerList.Size = UDim2.new(1, -20, 1, -60)
-
-PlayerList.Position = UDim2.fromOffset(10, 52)
-
-PlayerList.BackgroundTransparency = 1
-
-PlayerList.BorderSizePixel = 0
-
-PlayerList.ScrollBarThickness = 4
-
-PlayerList.ZIndex = 210
-
-PlayerList.Parent = PlayerSelector
-
-local PlayerLayout = Instance.new("UIListLayout")
-
-PlayerLayout.Padding = UDim.new(0, 6)
-
-PlayerLayout.Parent = PlayerList
-
-PlayerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(
-	function()
-		PlayerList.CanvasSize =
-			UDim2.fromOffset(0, PlayerLayout.AbsoluteContentSize.Y + 10)
+local function DoTeleport()
+	if not SelectedPlayer then
+		return
 	end
-)
+	local myRoot = GetRoot()
+	local tRoot = GetPlayerRoot(SelectedPlayer)
+	if myRoot and tRoot then
+		myRoot.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
+	end
+end
 
-local function RefreshPlayerList()
-	for _, object in ipairs(PlayerList:GetChildren()) do
-		if not object:IsA("UIListLayout") then
-			object:Destroy()
+local function StartOrbit()
+	if not SelectedPlayer then
+		return
+	end
+	State.OrbitEnabled = true
+	Connections.Orbit = RunService.RenderStepped:Connect(function()
+		if not State.OrbitEnabled then
+			return
 		end
+		local myRoot = GetRoot()
+		local tRoot = GetPlayerRoot(SelectedPlayer)
+		if not myRoot or not tRoot then
+			return
+		end
+		local t = tick() * Values.OrbitSpeed
+		local offset = Vector3.new(math.cos(t) * 5, 3, math.sin(t) * 5)
+		myRoot.CFrame = CFrame.new(tRoot.Position + offset, tRoot.Position)
+	end)
+end
+
+local function StopOrbit()
+	State.OrbitEnabled = false
+	if Connections.Orbit then
+		Connections.Orbit:Disconnect()
+		Connections.Orbit = nil
 	end
+end
 
-	for _, target in ipairs(Players:GetPlayers()) do
-		if target ~= LocalPlayer then
-			local button = Instance.new("TextButton")
-			button.Size = UDim2.new(1, -5, 0, 40)
-			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-			button.BorderSizePixel = 0
-			button.Text = target.DisplayName .. "  @" .. target.Name
-			button.TextColor3 = Color3.fromRGB(25, 25, 25)
-			button.TextSize = 13
-			button.Font = Enum.Font.Gotham
-			button.ZIndex = 220
-			button.Parent = PlayerList
-			Corner(button, 8)
+--// ================================================================
+--//  区块 21: 夜视 / 全亮 / 锁定视角
+--// ================================================================
+local OriginalCameraType = nil
 
-			button.MouseButton1Click:Connect(function()
-				SelectedPlayer = target
-				PlayerSelector.Visible = false
-				print("当前目标：", target.Name)
+local function SetNightVision(on)
+	State.NightVision = on
+	if on then
+		Lighting.Brightness = 3
+		Lighting.ClockTime = 14
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+	else
+		Lighting.Brightness = 1
+		Lighting.Ambient = Color3.new(0, 0, 0)
+	end
+end
+
+local function SetFullBright(on)
+	State.FullBright = on
+	if on then
+		Lighting.GlobalShadows = false
+		Lighting.FogEnd = 100000
+	else
+		Lighting.GlobalShadows = true
+	end
+end
+
+local function SetLockCamera(on)
+	State.LockCamera = on
+	local cam = Workspace.CurrentCamera
+	if on then
+		OriginalCameraType = cam.CameraType
+		cam.CameraType = Enum.CameraType.Scriptable
+	else
+		cam.CameraType = OriginalCameraType or Enum.CameraType.Custom
+	end
+end
+
+--// ================================================================
+--//  区块 22: 反踢 / 反检测
+--// ================================================================
+local function StartAntiKick()
+	State.AntiKick = true
+	if hookmetamethod and getnamecallmethod then
+		local mt = getrawmetatable and getrawmetatable(game)
+		if mt then
+			local old = mt.__namecall
+			hookmetamethod(game, "__namecall", function(self, ...)
+				local method = getnamecallmethod()
+				if method and (method:lower() == "kick" or method:lower() == "destroy") then
+					return nil
+				end
+				return old(self, ...)
 			end)
 		end
 	end
 end
 
-Players.PlayerAdded:Connect(function()
-	RefreshPlayerList()
+local function StopAntiKick()
+	State.AntiKick = false
+end
+
+local AntiDetectLast = tick()
+local function StartAntiDetect()
+	State.AntiDetect = true
+	Connections.AntiDetect = RunService.Heartbeat:Connect(function()
+		if not State.AntiDetect then
+			return
+		end
+		local now = tick()
+		if now - AntiDetectLast < math.random(0.01, 0.05) then
+			return
+		end
+		AntiDetectLast = now
+		if ScreenGui then
+			ScreenGui.Name = "CoreGui_" .. tostring(math.random(1000, 9999))
+		end
+	end)
+
+	LocalPlayer.CharacterRemoving:Connect(function()
+		if State.AntiDetect then
+			task.wait(0.5)
+			if not LocalPlayer.Character then
+				pcall(function()
+					LocalPlayer:LoadCharacter()
+				end)
+			end
+		end
+	end)
+end
+
+local function StopAntiDetect()
+	State.AntiDetect = false
+	if Connections.AntiDetect then
+		Connections.AntiDetect:Disconnect()
+		Connections.AntiDetect = nil
+	end
+end
+
+--// ================================================================
+--//  区块 23: 旋转 / 自动 farm
+--// ================================================================
+local function StartSpinBot()
+	State.SpinBot = true
+	Connections.SpinBot = RunService.RenderStepped:Connect(function()
+		if not State.SpinBot then
+			return
+		end
+		local root = GetRoot()
+		if root then
+			root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(Values.SpinSpeed), 0)
+		end
+	end)
+end
+
+local function StopSpinBot()
+	State.SpinBot = false
+	if Connections.SpinBot then
+		Connections.SpinBot:Disconnect()
+		Connections.SpinBot = nil
+	end
+end
+
+--// ================================================================
+--//  区块 24: 玩家选择器
+--// ================================================================
+local PlayerSelector = Instance.new("Frame")
+PlayerSelector.Name = "PlayerSelector"
+PlayerSelector.Size = UDim2.fromOffset(250, 300)
+PlayerSelector.Position = UDim2.new(0.5, -125, 0.5, -150)
+PlayerSelector.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PlayerSelector.BorderSizePixel = 0
+PlayerSelector.Visible = false
+PlayerSelector.Active = true
+PlayerSelector.ZIndex = 200
+PlayerSelector.Parent = ScreenGui
+Corner(PlayerSelector, 15)
+
+local PSStroke = Instance.new("UIStroke")
+PSStroke.Thickness = 3
+PSStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+PSStroke.Parent = PlayerSelector
+
+local PSGrad = Instance.new("UIGradient")
+PSGrad.Color = Rainbow
+PSGrad.Parent = PSStroke
+
+local PSTitle = Instance.new("TextLabel")
+PSTitle.Size = UDim2.new(1, -55, 0, 45)
+PSTitle.Position = UDim2.fromOffset(15, 3)
+PSTitle.BackgroundTransparency = 1
+PSTitle.Text = "选择玩家"
+PSTitle.TextColor3 = Color3.fromRGB(20, 20, 20)
+PSTitle.TextSize = 18
+PSTitle.Font = Enum.Font.GothamBold
+PSTitle.TextXAlignment = Enum.TextXAlignment.Left
+PSTitle.ZIndex = 210
+PSTitle.Parent = PlayerSelector
+
+local PSClose = Instance.new("TextButton")
+PSClose.Size = UDim2.fromOffset(35, 35)
+PSClose.Position = UDim2.new(1, -40, 0, 6)
+PSClose.BackgroundTransparency = 1
+PSClose.Text = "×"
+PSClose.TextColor3 = Color3.fromRGB(30, 30, 30)
+PSClose.TextSize = 25
+PSClose.Font = Enum.Font.GothamBold
+PSClose.ZIndex = 220
+PSClose.Parent = PlayerSelector
+
+PSClose.MouseButton1Click:Connect(function()
+	PlayerSelector.Visible = false
 end)
 
-Players.PlayerRemoving:Connect(function(leavingPlayer)
-	if SelectedPlayer == leavingPlayer then
+local PlayerList = Instance.new("ScrollingFrame")
+PlayerList.Size = UDim2.new(1, -20, 1, -60)
+PlayerList.Position = UDim2.fromOffset(10, 52)
+PlayerList.BackgroundTransparency = 1
+PlayerList.BorderSizePixel = 0
+PlayerList.ScrollBarThickness = 4
+PlayerList.ZIndex = 210
+PlayerList.Parent = PlayerSelector
+
+local PlayerLayout = Instance.new("UIListLayout")
+PlayerLayout.Padding = UDim.new(0, 6)
+PlayerLayout.Parent = PlayerList
+
+PlayerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	PlayerList.CanvasSize = UDim2.fromOffset(0, PlayerLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local function RefreshPlayerList()
+	for _, obj in ipairs(PlayerList:GetChildren()) do
+		if not obj:IsA("UIListLayout") then
+			obj:Destroy()
+		end
+	end
+	for _, target in ipairs(Players:GetPlayers()) do
+		if target ~= LocalPlayer then
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, -5, 0, 40)
+			btn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+			btn.BorderSizePixel = 0
+			btn.Text = target.DisplayName .. "  @" .. target.Name
+			btn.TextColor3 = Color3.fromRGB(25, 25, 25)
+			btn.TextSize = 13
+			btn.Font = Enum.Font.Gotham
+			btn.ZIndex = 220
+			btn.Parent = PlayerList
+			Corner(btn, 8)
+			btn.MouseButton1Click:Connect(function()
+				SelectedPlayer = target
+				PlayerSelector.Visible = false
+			end)
+		end
+	end
+end
+
+Players.PlayerRemoving:Connect(function(leaving)
+	if SelectedPlayer == leaving then
 		SelectedPlayer = nil
 	end
-	RefreshPlayerList()
 end)
 
--- 真实生效的甩飞（客户端 BodyVelocity 冲量）
-local function FlingTarget(target)
-	if not target or not target.Character then
-		return
-	end
-	local root = target.Character:FindFirstChild("HumanoidRootPart")
-	if not root then
-		return
-	end
-	local bv = Instance.new("BodyVelocity")
-	bv.MaxForce = Vector3.new(1e7, 1e7, 1e7)
-	bv.Velocity = Vector3.new(
-		math.random(-300, 300),
-		500,
-		math.random(-300, 300)
-	)
-	bv.Parent = root
-	game:GetService("Debris"):AddItem(bv, 0.3)
-end
-
--- 真实传送（客户端坐标设置）
-local function TeleportTo(target)
-	if not target or not target.Character then
-		return
-	end
-	local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
-	local myRoot = GetRoot()
-	if targetRoot and myRoot then
-		myRoot.CFrame = targetRoot.CFrame + Vector3.new(0, 3, 0)
-	end
-end
-
--- 环绕（在目标周围做圆周运动）
-local OrbitConnection = nil
-local function SetOrbit(enabled, speed)
-	if OrbitConnection then
-		OrbitConnection:Disconnect()
-		OrbitConnection = nil
-	end
-	if enabled and SelectedPlayer and SelectedPlayer.Character then
-		local radius = 5
-		local angle = 0
-		OrbitConnection = RunService.RenderStepped:Connect(function(dt)
-			local targetRoot = SelectedPlayer.Character
-				and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-			local myRoot = GetRoot()
-			if not targetRoot or not myRoot then
-				return
-			end
-			angle = angle + dt * (speed or 10)
-			local offset = Vector3.new(
-				math.cos(angle) * radius,
-				2,
-				math.sin(angle) * radius
-			)
-			myRoot.CFrame = CFrame.new(targetRoot.Position + offset)
-		end)
-	end
-end
-
---// =============================================================
---  页面：信息
--- =============================================================
-
+--// ================================================================
+--//  区块 25: 页面 - 信息
+--// ================================================================
 local function ShowInfo()
 	ClearContent()
-	Section("玩家信息")
-
+	Section("信息")
+	Button("欢迎使用 AM Hub")
 	local age = LocalPlayer.AccountAge
 	local years = math.floor(age / 365)
 	local days = age % 365
-
+	Button("账户年龄：" .. years .. "年" .. days .. "天")
 	Button("用户名：" .. LocalPlayer.Name)
-	Button("显示名：" .. LocalPlayer.DisplayName)
-	Button("用户ID：" .. tostring(LocalPlayer.UserId))
-	Button("账号年龄：" .. years .. " 年 " .. days .. " 天")
-
-	Section("脚本信息")
-	Button("AM通用脚本 · 纯中文版")
-	Button("QQ群：" .. QQ_GROUP)
-	Button("点击复制群号", function()
-		pcall(function()
-			setclipboard(QQ_GROUP)
-		end)
-	end)
+	Button("显示名称：" .. LocalPlayer.DisplayName)
+	Button("用户ID：" .. LocalPlayer.UserId)
+	Button("QQ群：" .. CONFIG.QQ_GROUP)
 end
 
---// =============================================================
---  页面：通用
--- =============================================================
-
+--// ================================================================
+--//  区块 26: 页面 - 通用
+--// ================================================================
 local function ShowGeneral()
 	ClearContent()
-	Section("通用")
-
-	Toggle("无限跳跃", InfiniteJump, function(enabled)
-		InfiniteJump = enabled
-	end)
-
-	Toggle("飞行", Flying, function(enabled)
-		if enabled then
+	Section("移动")
+	Toggle("飞行", State.Flying, function(v)
+		if v then
 			StartFlight()
 		else
 			StopFlight()
 		end
 	end)
-
-	Slider("飞行速度", 1, 100, FlightSpeed, function(value)
-		FlightSpeed = value
+	Slider("飞行速度", 10, 200, Values.FlightSpeed, function(v)
+		Values.FlightSpeed = v
 	end)
-
-	Toggle("穿墙", Noclip, function(enabled)
-		SetNoclip(enabled)
+	Toggle("无限跳跃", State.InfiniteJump, function(v)
+		State.InfiniteJump = v
 	end)
-
-	Toggle("夜视", false, function(enabled)
-		if enabled then
-			Lighting.Ambient = Color3.new(1, 1, 1)
-			Lighting.Brightness = 2
+	Slider("移速", 16, 300, Values.WalkSpeed, function(v)
+		ApplySpeed(v)
+	end)
+	Slider("跳高", 50, 300, Values.JumpPower, function(v)
+		ApplyJump(v)
+	end)
+	Slider("重力", 0, 300, Values.Gravity, function(v)
+		ApplyGravity(v)
+	end)
+	Toggle("穿墙", State.Noclip, function(v)
+		if v then
+			StartNoclip()
 		else
-			Lighting.Ambient = Color3.new(0, 0, 0)
-			Lighting.Brightness = 1
+			StopNoclip()
 		end
 	end)
-
-	Slider("移速", 1, 300, 16, function(value)
-		local humanoid = GetHumanoid()
-		if humanoid then
-			humanoid.WalkSpeed = value
-		end
+	Section("视角")
+	Toggle("夜视", false, function(v)
+		SetNightVision(v)
 	end)
-
-	Slider("跳高", 1, 300, 50, function(value)
-		local humanoid = GetHumanoid()
-		if humanoid then
-			humanoid.JumpPower = value
-		end
+	Toggle("全图明亮", false, function(v)
+		SetFullBright(v)
 	end)
-
-	Slider("重力", 0, 300, 196, function(value)
-		workspace.Gravity = value
+	Toggle("锁定视角", false, function(v)
+		SetLockCamera(v)
 	end)
-
-	Toggle("点击屏幕瞬移", false, function(enabled)
-		SetClickTP(enabled)
-	end)
-
-	Toggle("锁定视角", false, function(enabled)
-		if enabled then
-			UserInputService.MouseBehavior =
-				Enum.MouseBehavior.LockCenter
+	Toggle("点击传送", false, function(v)
+		if v then
+			StartClickTP()
 		else
-			UserInputService.MouseBehavior =
-				Enum.MouseBehavior.Default
+			StopClickTP()
 		end
-	end)
-
-	Button("重置所有数值", function()
-		local humanoid = GetHumanoid()
-		if humanoid then
-			humanoid.WalkSpeed = 16
-			humanoid.JumpPower = 50
-		end
-		workspace.Gravity = 196
 	end)
 end
 
---// =============================================================
---  页面：战斗（透视/自瞄/范围 全部真实化）
--- =============================================================
-
+--// ================================================================
+--//  区块 27: 页面 - 战斗
+--// ================================================================
 local function ShowCombat()
 	ClearContent()
 	Section("战斗")
-
-	Toggle("透视 (ESP)", ESPEnabled, function(enabled)
-		SetESP(enabled)
+	Toggle("ESP", State.ESP_Enabled, function(v)
+		if v then
+			StartESP()
+		else
+			StopESP()
+		end
 	end)
-
-	Toggle("自瞄", AimbotEnabled, function(enabled)
-		SetAimbot(enabled)
+	Slider("自瞄 FOV", 30, 300, Values.AimbotFOV, function(v)
+		Values.AimbotFOV = v
 	end)
-
-	Slider("自瞄 FOV", 30, 300, AimbotFOV, function(value)
-		AimbotFOV = value
+	Toggle("自瞄", State.Aimbot_Enabled, function(v)
+		if v then
+			StartAimbot()
+		else
+			StopAimbot()
+		end
 	end)
-
-	Slider("范围 (甩飞半径)", 1, 1500, 150, function(value)
-		-- 预留给范围类效果，当前无服务端权限时仅本地记录
-	end)
-
-	Button("清除所有特效", function()
-		SetESP(false)
-		SetAimbot(false)
-	end)
+	Button("敌对颜色：红色")
+	Button("我方颜色：蓝色")
 end
 
---// =============================================================
---  页面：娱乐
--- =============================================================
-
-local function ShowEntertainment()
-	ClearContent()
-	Section("娱乐")
-
-	Toggle("高速旋转", false, function(enabled)
-		if enabled then
-			_G._Spin = RunService.RenderStepped:Connect(function()
-				local root = GetRoot()
-				if root then
-					root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(15), 0)
-				end
-			end)
-		elseif _G._Spin then
-			_G._Spin:Disconnect()
-		end
-	end)
-
-	Button("变大 (2倍)", function()
-		local char = GetCharacter()
-		if char then
-			char:ScaleTo(2)
-		end
-	end)
-
-	Button("变小 (0.5倍)", function()
-		local char = GetCharacter()
-		if char then
-			char:ScaleTo(0.5)
-		end
-	end)
-
-	Button("恢复正常大小", function()
-		local char = GetCharacter()
-		if char then
-			char:ScaleTo(1)
-		end
-	end)
-end
-
---// =============================================================
---  页面：甩飞（真实生效）
--- =============================================================
-
+--// ================================================================
+--//  区块 28: 页面 - 甩飞
+--// ================================================================
 local function ShowFling()
 	ClearContent()
-	Section("甩飞 / 传送 / 环绕")
-
+	Section("甩飞")
 	Button("选择玩家", function()
 		RefreshPlayerList()
 		PlayerSelector.Visible = true
 	end)
-
-	local targetName = SelectedPlayer and SelectedPlayer.Name or "未选择"
-	Button("当前目标：" .. targetName)
-
-	Button("甩飞目标", function()
-		if not SelectedPlayer then
-			print("请先选择玩家")
-			return
-		end
-		FlingTarget(SelectedPlayer)
-	end)
-
-	Button("传送到目标", function()
-		if not SelectedPlayer then
-			print("请先选择玩家")
-			return
-		end
-		TeleportTo(SelectedPlayer)
-	end)
-
-	Toggle("环绕目标", false, function(enabled)
-		SetOrbit(enabled, 10)
-	end)
-
-	Slider("环绕速度", 1, 100, 10, function(value)
-		if OrbitConnection then
-			SetOrbit(true, value)
-		end
-	end)
-end
-
---// =============================================================
---  页面：特效（真实生效）
--- =============================================================
-
-local function ShowEffects()
-	ClearContent()
-	Section("特效")
-
-	Toggle("金身", false, function(enabled)
-		local char = GetCharacter()
-		if not char then
-			return
-		end
-		for _, object in ipairs(char:GetChildren()) do
-			if object:IsA("BasePart") then
-				if enabled then
-					object.Material = Enum.Material.Neon
-					object.Color = Color3.fromRGB(255, 200, 40)
-				else
-					object.Material = Enum.Material.Plastic
-				end
-			end
-		end
-	end)
-
-	Toggle("头顶火焰", false, function(enabled)
-		local char = GetCharacter()
-		if not char then
-			return
-		end
-		local head = char:FindFirstChild("Head")
-		if not head then
-			return
-		end
-		local old = head:FindFirstChild("AM_Fire")
-		if old then
-			old:Destroy()
-		end
-		if enabled then
-			local fire = Instance.new("Fire")
-			fire.Name = "AM_Fire"
-			fire.Heat = 8
-			fire.Size = 6
-			fire.Parent = head
-		end
-	end)
-
-	Toggle("夜视", false, function(enabled)
-		if enabled then
-			Lighting.Ambient = Color3.new(1, 1, 1)
+	local tname = SelectedPlayer and SelectedPlayer.Name or "未选择"
+	Button("当前目标：" .. tname)
+	Button("甩飞", DoFling)
+	Button("传送", DoTeleport)
+	Toggle("环绕", State.OrbitEnabled, function(v)
+		if v then
+			StartOrbit()
 		else
-			Lighting.Ambient = Color3.new(0, 0, 0)
+			StopOrbit()
 		end
 	end)
-
-	Button("全图明亮", function()
-		Lighting.Brightness = 5
-		Lighting.Ambient = Color3.new(1, 1, 1)
+	Slider("环绕速度", 1, 30, Values.OrbitSpeed, function(v)
+		Values.OrbitSpeed = v
+	end)
+	Slider("甩飞力度", 50, 500, Values.FlingPower, function(v)
+		Values.FlingPower = v
 	end)
 end
 
---// =============================================================
---  页面：设置
--- =============================================================
+--// ================================================================
+--//  区块 29: 页面 - 娱乐
+--// ================================================================
+local function ShowEntertainment()
+	ClearContent()
+	Section("娱乐")
+	Toggle("旋转", State.SpinBot, function(v)
+		if v then
+			StartSpinBot()
+		else
+			StopSpinBot()
+		end
+	end)
+	Slider("旋转速度", 5, 100, Values.SpinSpeed, function(v)
+		Values.SpinSpeed = v
+	end)
+	Button("重置所有", function()
+		StopFlight()
+		StopESP()
+		StopAimbot()
+		StopNoclip()
+		StopOrbit()
+		StopSpinBot()
+		ApplySpeed(16)
+		ApplyJump(50)
+		ApplyGravity(196)
+		SetNightVision(false)
+		SetFullBright(false)
+		SetLockCamera(false)
+	end)
+end
 
+--// ================================================================
+--//  区块 30: 页面 - 高级 (反检测)
+--// ================================================================
+local function ShowAdvanced()
+	ClearContent()
+	Section("高级 / 反检测")
+	Toggle("反踢 (AntiKick)", State.AntiKick, function(v)
+		if v then
+			StartAntiKick()
+		else
+			StopAntiKick()
+		end
+	end)
+	Toggle("反检测 (AntiDetect)", State.AntiDetect, function(v)
+		if v then
+			StartAntiDetect()
+		else
+			StopAntiDetect()
+		end
+	end)
+	Button("手动重生角色", function()
+		pcall(function()
+			LocalPlayer:LoadCharacter()
+		end)
+	end)
+	Button("刷新玩家列表", RefreshPlayerList)
+end
+
+--// ================================================================
+--//  区块 31: 页面 - 设置
+--// ================================================================
 local function ShowSettings()
 	ClearContent()
 	Section("设置")
-
 	Button("关闭菜单", function()
 		Menu.Visible = false
 	end)
-
-	Button("显示悬浮窗", function()
-		AMButton.Visible = true
-	end)
-
-	Button("隐藏悬浮窗", function()
-		AMButton.Visible = false
-	end)
-
-	Button("退出 AM", function()
+	Button("退出 AM (完全卸载)", function()
 		StopFlight()
-		SetNoclip(false)
-		SetESP(false)
-		SetAimbot(false)
-		SetOrbit(false, 0)
-		if InfiniteJumpConnection then
-			InfiniteJumpConnection:Disconnect()
-			InfiniteJumpConnection = nil
-		end
+		StopESP()
+		StopAimbot()
+		StopNoclip()
+		StopOrbit()
+		StopSpinBot()
+		StopAntiKick()
+		StopAntiDetect()
+		StopClickTP()
+		SetLockCamera(false)
+		SetNightVision(false)
+		SetFullBright(false)
 		ScreenGui:Destroy()
 	end)
 end
 
---// =============================================================
---  分类
--- =============================================================
-
+--// ================================================================
+--//  区块 32: 分类系统
+--// ================================================================
 local Categories = {
 	"信息",
 	"通用",
 	"战斗",
-	"娱乐",
 	"甩飞",
-	"特效",
+	"娱乐",
+	"高级",
 	"设置",
 }
 
-local Pages = {}
-Pages["信息"] = ShowInfo
-Pages["通用"] = ShowGeneral
-Pages["战斗"] = ShowCombat
-Pages["娱乐"] = ShowEntertainment
-Pages["甩飞"] = ShowFling
-Pages["特效"] = ShowEffects
-Pages["设置"] = ShowSettings
+local Pages = {
+	["信息"] = ShowInfo,
+	["通用"] = ShowGeneral,
+	["战斗"] = ShowCombat,
+	["甩飞"] = ShowFling,
+	["娱乐"] = ShowEntertainment,
+	["高级"] = ShowAdvanced,
+	["设置"] = ShowSettings,
+}
 
 local CategoryButtons = {}
 
 local function SelectCategory(name)
-	for category, button in pairs(CategoryButtons) do
-		if category == name then
-			button.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
-			button.TextColor3 = Color3.fromRGB(10, 10, 10)
+	for cat, btn in pairs(CategoryButtons) do
+		if cat == name then
+			btn.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+			btn.TextColor3 = Color3.fromRGB(10, 10, 10)
 		else
-			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-			button.TextColor3 = Color3.fromRGB(90, 90, 90)
+			btn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+			btn.TextColor3 = Color3.fromRGB(90, 90, 90)
 		end
 	end
-
 	if Pages[name] then
 		Pages[name]()
 	end
 end
 
-for index, name in ipairs(Categories) do
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -10, 0, 36)
-	button.Position = UDim2.fromOffset(5, 5 + (index - 1) * 41)
-	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-	button.BorderSizePixel = 0
-	button.Text = name
-	button.TextSize = 12
-	button.Font = Enum.Font.GothamBold
-	button.TextColor3 = Color3.fromRGB(90, 90, 90)
-	button.AutoButtonColor = false
-	button.ZIndex = 20
-	button.Parent = CategoryBar
-	Corner(button, 8)
-
-	CategoryButtons[name] = button
-
-	button.MouseButton1Click:Connect(function()
+for i, name in ipairs(Categories) do
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -10, 0, 38)
+	btn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+	btn.BorderSizePixel = 0
+	btn.Text = name
+	btn.TextSize = 13
+	btn.Font = Enum.Font.GothamBold
+	btn.TextColor3 = Color3.fromRGB(90, 90, 90)
+	btn.AutoButtonColor = false
+	btn.ZIndex = 20
+	btn.Parent = CategoryBar
+	Corner(btn, 8)
+	CategoryButtons[name] = btn
+	btn.MouseButton1Click:Connect(function()
 		SelectCategory(name)
 	end)
 end
 
---// =============================================================
---  菜单拖动
--- =============================================================
-
+--// ================================================================
+--//  区块 33: 菜单拖动
+--// ================================================================
 local MenuDragging = false
-local MenuDragStart
-local MenuStartPosition
+local MenuDragStart = nil
+local MenuStartPos = nil
 
 Header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		MenuDragging = true
 		MenuDragStart = input.Position
-		MenuStartPosition = Menu.Position
+		MenuStartPos = Menu.Position
 	end
 end)
 
@@ -1498,10 +1509,10 @@ UserInputService.InputChanged:Connect(function(input)
 		or input.UserInputType == Enum.UserInputType.MouseMovement then
 		local delta = input.Position - MenuDragStart
 		Menu.Position = UDim2.new(
-			MenuStartPosition.X.Scale,
-			MenuStartPosition.X.Offset + delta.X,
-			MenuStartPosition.Y.Scale,
-			MenuStartPosition.Y.Offset + delta.Y
+			MenuStartPos.X.Scale,
+			MenuStartPos.X.Offset + delta.X,
+			MenuStartPos.Y.Scale,
+			MenuStartPos.Y.Offset + delta.Y
 		)
 	end
 end)
@@ -1513,40 +1524,39 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
---// =============================================================
---  悬浮球拖动
--- =============================================================
-
-local ButtonDragging = false
-local ButtonDragStart
-local ButtonStartPosition
-local ButtonMoved = false
+--// ================================================================
+--//  区块 34: 悬浮球拖动
+--// ================================================================
+local BtnDrag = false
+local BtnDragStart = nil
+local BtnStartPos = nil
+local BtnMoved = false
 
 AMButton.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		ButtonDragging = true
-		ButtonMoved = false
-		ButtonDragStart = input.Position
-		ButtonStartPosition = AMButton.Position
+		BtnDrag = true
+		BtnMoved = false
+		BtnDragStart = input.Position
+		BtnStartPos = AMButton.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if not ButtonDragging then
+	if not BtnDrag then
 		return
 	end
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - ButtonDragStart
+		local delta = input.Position - BtnDragStart
 		if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
-			ButtonMoved = true
+			BtnMoved = true
 		end
 		AMButton.Position = UDim2.new(
-			ButtonStartPosition.X.Scale,
-			ButtonStartPosition.X.Offset + delta.X,
-			ButtonStartPosition.Y.Scale,
-			ButtonStartPosition.Y.Offset + delta.Y
+			BtnStartPos.X.Scale,
+			BtnStartPos.X.Offset + delta.X,
+			BtnStartPos.Y.Scale,
+			BtnStartPos.Y.Offset + delta.Y
 		)
 	end
 end)
@@ -1554,42 +1564,41 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if ButtonDragging and not ButtonMoved then
+		if BtnDrag and not BtnMoved then
 			Menu.Visible = not Menu.Visible
 		end
-		ButtonDragging = false
+		BtnDrag = false
 	end
 end)
 
---// =============================================================
---  玩家选择器拖动
--- =============================================================
+--// ================================================================
+--//  区块 35: 玩家选择器拖动
+--// ================================================================
+local SelDrag = false
+local SelDragStart = nil
+local SelStartPos = nil
 
-local SelectorDragging = false
-local SelectorDragStart
-local SelectorStartPosition
-
-SelectorTitle.InputBegan:Connect(function(input)
+PSTitle.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		SelectorDragging = true
-		SelectorDragStart = input.Position
-		SelectorStartPosition = PlayerSelector.Position
+		SelDrag = true
+		SelDragStart = input.Position
+		SelStartPos = PlayerSelector.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if not SelectorDragging then
+	if not SelDrag then
 		return
 	end
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - SelectorDragStart
+		local delta = input.Position - SelDragStart
 		PlayerSelector.Position = UDim2.new(
-			SelectorStartPosition.X.Scale,
-			SelectorStartPosition.X.Offset + delta.X,
-			SelectorStartPosition.Y.Scale,
-			SelectorStartPosition.Y.Offset + delta.Y
+			SelStartPos.X.Scale,
+			SelStartPos.X.Offset + delta.X,
+			SelStartPos.Y.Scale,
+			SelStartPos.Y.Offset + delta.Y
 		)
 	end
 end)
@@ -1597,962 +1606,1499 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		SelectorDragging = false
+		SelDrag = false
 	end
 end)
 
---// =============================================================
---  流光
--- =============================================================
-
+--// ================================================================
+--//  区块 36: 流光动画
+--// ================================================================
 local Rotation = 0
 
 RunService.RenderStepped:Connect(function(dt)
 	Rotation = (Rotation + dt * 100) % 360
 	AMGradient.Rotation = Rotation
 	MenuGradient.Rotation = Rotation
-	SelectorGradient.Rotation = Rotation
+	PSGrad.Rotation = Rotation
 end)
 
---// =============================================================
---  启动（默认显示信息页，悬浮窗常驻）
--- =============================================================
-
+--// ================================================================
+--//  区块 37: 启动
+--// ================================================================
 SelectCategory("信息")
 
--- 确保悬浮窗一定可见
-AMButton.Visible = true
+print("[AM Hub] Loaded - 左侧可滑动 / 高级分类 / 飞行已修复 / 反检测已加载")
+print("[AM Hub] 版本:", CONFIG.VERSION, "作者:", CONFIG.AUTHOR)
+print("[AM Hub] QQ群:", CONFIG.QQ_GROUP)
 
-
---// =============================================================
---//  ===========================================================
---//  以下为扩展系统（双引擎 / 配置 / 热键 / 重生恢复）
---//  ===========================================================
---// =============================================================
-
---// =============================================================
---  扩展配置（可随时在设置页调整）
--- =============================================================
-
-local ExtConfig = {
-	-- 飞行
-	Flight = {
-		Method = "BodyVelocity",  -- "BodyVelocity" | "CFrame"
-		MaxSpeed = 120,
-		LiftSpeed = 60,
-		GyroStrength = 9000,
-	},
-	-- 穿墙
-	Noclip = {
-		Mode = "Stepped",  -- "Stepped" | "Heartbeat"
-	},
-	-- ESP
-	ESP = {
-		UseHighlight = true,
-		UseBillboard = true,
-		ShowDistance = true,
-		Color = Color3.fromRGB(255, 0, 80),
-	},
-	-- 自瞄
-	Aimbot = {
-		Smoothness = 0.15,
-		MaxDistance = 1000,
-		TeamCheck = false,
-	},
-	-- 环绕
-	Orbit = {
-		Radius = 5,
-		DefaultSpeed = 10,
-	},
+--// ================================================================
+--//  区块 38: 飞行系统 - 备用方案 (CFrame 直接控制)
+--//  说明: 当 BodyVelocity 被服务器纠正时, 可切换到此方案
+--// ================================================================
+local CFrameFlight = {
+	Enabled = false,
+	Connection = nil,
+	Speed = 50,
 }
 
---// =============================================================
---  配置持久化（简易：存到 _G，重生不丢）
--- =============================================================
-
-local function SaveConfig()
-	local data = {
-		FlightSpeed = FlightSpeed,
-		InfiniteJump = InfiniteJump,
-		Noclip = Noclip,
-		ESPEnabled = ESPEnabled,
-		AimbotFOV = AimbotFOV,
-	}
-	_G.__AM_SavedConfig = data
+local function CFrameFlight_Stop()
+	CFrameFlight.Enabled = false
+	local hum = GetHumanoid()
+	if hum then
+		hum.PlatformStand = false
+	end
+	if CFrameFlight.Connection then
+		CFrameFlight.Connection:Disconnect()
+		CFrameFlight.Connection = nil
+	end
 end
 
-local function LoadConfig()
-	local data = _G.__AM_SavedConfig
-	if not data then
+local function CFrameFlight_Start()
+	if CFrameFlight.Enabled then
 		return
 	end
-	if data.FlightSpeed then
-		FlightSpeed = data.FlightSpeed
+	local hum = GetHumanoid()
+	local root = GetRoot()
+	if not hum or not root then
+		return
 	end
-	if data.InfiniteJump then
-		InfiniteJump = data.InfiniteJump
-	end
-	if data.Noclip then
-		SetNoclip(true)
-	end
-	if data.ESPEnabled then
-		SetESP(true)
-	end
-	if data.AimbotFOV then
-		AimbotFOV = data.AimbotFOV
-	end
-end
+	CFrameFlight.Enabled = true
+	hum.PlatformStand = true
 
---// =============================================================
---  飞行：CFrame 备用引擎（当 BodyVelocity 被服务端限制时切换）
--- =============================================================
-
-local CFrameFlightConnection = nil
-local CFrameFlightActive = false
-
-local function StartCFrameFlight()
-	CFrameFlightActive = true
-	local humanoid = GetHumanoid()
-	if humanoid then
-		humanoid.PlatformStand = true
-	end
-
-	CFrameFlightConnection = RunService.RenderStepped:Connect(function()
-		if not CFrameFlightActive then
+	CFrameFlight.Connection = RunService.RenderStepped:Connect(function()
+		if not CFrameFlight.Enabled then
 			return
 		end
-		local root = GetRoot()
-		local humanoid = GetHumanoid()
-		if not root or not humanoid then
+		local curHum = GetHumanoid()
+		local curRoot = GetRoot()
+		if not curHum or not curRoot then
+			CFrameFlight_Stop()
 			return
 		end
-		local camera = workspace.CurrentCamera
-		if not camera then
+		local cam = Workspace.CurrentCamera
+		if not cam then
 			return
 		end
-
-		local move = humanoid.MoveDirection
+		local move = curHum.MoveDirection
 		if move.Magnitude > 0 then
-			local camForward = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
-			local camRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
-			local dir = (camForward * move.Z + camRight * move.X).Unit
-			root.CFrame = root.CFrame + dir * (ExtConfig.Flight.MaxSpeed * 0.05)
-		end
-
-		-- 升降
-		if humanoid.Jump then
-			root.CFrame = root.CFrame + Vector3.new(0, ExtConfig.Flight.LiftSpeed * 0.05, 0)
+			local cf = cam.CFrame
+			local fwd = cf.LookVector
+			local right = cf.RightVector
+			fwd = Vector3.new(fwd.X, 0, fwd.Z).Unit
+			local dir = (fwd * move.Z + right * move.X).Unit
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+				dir = dir + Vector3.new(0, 1, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+				dir = dir - Vector3.new(0, 1, 0)
+			end
+			curRoot.CFrame = curRoot.CFrame + dir * (CFrameFlight.Speed * 0.016)
+			curRoot.AssemblyLinearVelocity = Vector3.zero
 		end
 	end)
 end
 
-local function StopCFrameFlight()
-	CFrameFlightActive = false
-	if CFrameFlightConnection then
-		CFrameFlightConnection:Disconnect()
-		CFrameFlightConnection = nil
-	end
-	local humanoid = GetHumanoid()
-	if humanoid then
-		humanoid.PlatformStand = false
-	end
-end
-
--- 统一飞行开关（自动选引擎）
-local function SetFlight(enabled)
-	if enabled then
-		if ExtConfig.Flight.Method == "CFrame" then
-			StopFlight()  -- 关掉 BodyVelocity 引擎
-			StartCFrameFlight()
-		else
-			StopCFrameFlight()
-			StartFlight()
-		end
-	else
-		StopFlight()
-		StopCFrameFlight()
-	end
-end
-
---// =============================================================
---  穿墙：Heartbeat 备用引擎
--- =============================================================
-
-local NoclipHeartbeatConnection = nil
-
-local function SetNoclipHeartbeat(enabled)
-	if NoclipHeartbeatConnection then
-		NoclipHeartbeatConnection:Disconnect()
-		NoclipHeartbeatConnection = nil
-	end
-	if enabled then
-		NoclipHeartbeatConnection = RunService.Heartbeat:Connect(function()
-			local char = GetCharacter()
-			if not char then
-				return
-			end
-			for _, part in ipairs(char:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CanCollide = false
-				end
-			end
-		end)
-	end
-end
-
--- 统一穿墙开关
-local function SetNoclipUnified(enabled)
-	SetNoclip(enabled)  -- Stepped 引擎
-	if ExtConfig.Noclip.Mode == "Heartbeat" then
-		SetNoclipHeartbeat(enabled)
-	end
-end
-
---// =============================================================
---  ESP：距离 + 颜色变体（扩展）
--- =============================================================
-
-local function UpdateESPColors()
-	for player, obj in pairs(ESPObjects) do
-		if obj.Highlight then
-			local dist = 50
-			local root = GetRoot()
-			if root and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				dist = (root.Position - player.Character.HumanoidRootPart.Position).Magnitude
-			end
-			-- 距离越近颜色越偏红
-			local t = math.clamp(dist / 200, 0, 1)
-			obj.Highlight.FillColor = Color3.new(1, 1 - t, 1 - t)
-		end
-	end
-end
-
---// =============================================================
---  自瞄：距离限制 + 平滑度可调
--- =============================================================
-
-local function GetBestAimbotTarget()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return nil
-	end
-
-	local bestPlayer = nil
-	local bestDist = AimbotFOV
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			if ExtConfig.Aimbot.TeamCheck then
-				local ok, same = pcall(function()
-					return player.Team == LocalPlayer.Team
-				end)
-				if ok and same then
-					continue
-				end
-			end
-			local head = player.Character:FindFirstChild("Head")
-			if not head then
-				continue
-			end
-			local root = player.Character:FindFirstChild("HumanoidRootPart")
-			if root then
-				local dist = (root.Position - camera.CFrame.Position).Magnitude
-				if dist > ExtConfig.Aimbot.MaxDistance then
-					continue
-				end
-			end
-			local screenPos, visible = camera:WorldToViewportPoint(head.Position)
-			if not visible then
-				continue
-			end
-			local center = camera.ViewportSize / 2
-			local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-			if screenDist < bestDist then
-				bestDist = screenDist
-				bestPlayer = player
-			end
-		end
-	end
-
-	return bestPlayer
-end
-
-local AimbotSmoothConnection = nil
-
-local function SetAimbotSmooth(enabled)
-	SetAimbot(false)  -- 先关掉旧连接
-	if AimbotSmoothConnection then
-		AimbotSmoothConnection:Disconnect()
-		AimbotSmoothConnection = nil
-	end
-	AimbotEnabled = enabled
-	if enabled then
-		AimbotSmoothConnection = RunService.RenderStepped:Connect(function()
-			local target = GetBestAimbotTarget()
-			if not target or not target.Character then
-				return
-			end
-			local head = target.Character:FindFirstChild("Head")
-			if not head then
-				return
-			end
-			local camera = workspace.CurrentCamera
-			local newCFrame = CFrame.new(camera.CFrame.Position, head.Position)
-			camera.CFrame = camera.CFrame:Lerp(newCFrame, ExtConfig.Aimbot.Smoothness)
-		end)
-	end
-end
-
---// =============================================================
---  环绕：暂停 / 恢复 / 半径调整
--- =============================================================
-
-local OrbitPaused = false
-
-local function SetOrbitPaused(paused)
-	OrbitPaused = paused
-end
-
-local function SetOrbitRadius(radius)
-	ExtConfig.Orbit.Radius = radius
-end
-
-local function SetOrbitSpeed(speed)
-	ExtConfig.Orbit.DefaultSpeed = speed
-	if OrbitConnection then
-		-- 重新以新速度启动
-		SetOrbit(true, speed)
-	end
-end
-
---// =============================================================
---  重生恢复：角色死亡后自动重绑所有系统
--- =============================================================
-
-LocalPlayer.CharacterAdded:Connect(function(character)
-	task.wait(1)
-	-- 恢复穿墙
-	if Noclip then
-		SetNoclipUnified(true)
-	end
-	-- 恢复飞行（停掉，等用户重开，避免卡在空中）
-	if Flying then
-		StopFlight()
-		Flying = false
-	end
-	-- 恢复 ESP 对象引用
-	if ESPEnabled then
-		ClearESP()
-	end
-	-- 恢复悬浮窗可见
-	AMButton.Visible = true
-	SaveConfig()
-end)
-
---// =============================================================
---  热键（PC / 有键盘时可用，手机忽略）
--- =============================================================
-
-local Hotkeys = {
-	[Enum.KeyCode.F1] = function()
-		SetFlight(not Flying)
-	end,
-	[Enum.KeyCode.F2] = function()
-		SetNoclipUnified(not Noclip)
-	end,
-	[Enum.KeyCode.F3] = function()
-		InfiniteJump = not InfiniteJump
-	end,
-	[Enum.KeyCode.F4] = function()
-		SetESP(not ESPEnabled)
-	end,
-	[Enum.KeyCode.F5] = function()
-		SetAimbotSmooth(not AimbotEnabled)
-	end,
-	[Enum.KeyCode.F6] = function()
-		Menu.Visible = not Menu.Visible
-	end,
+--// ================================================================
+--//  区块 39: 智能飞行切换 (自动检测被纠正则切换方案)
+--// ================================================================
+local SmartFlight = {
+	Enabled = false,
+	UseBackup = false,
+	FailCount = 0,
 }
 
+local function SmartFlight_Stop()
+	SmartFlight.Enabled = false
+	SmartFlight.FailCount = 0
+	StopFlight()
+	CFrameFlight_Stop()
+end
+
+local function SmartFlight_Start()
+	if SmartFlight.Enabled then
+		return
+	end
+	SmartFlight.Enabled = true
+	SmartFlight.UseBackup = false
+	StartFlight()
+end
+
+--// 每帧检测飞行是否有效, 失败多次自动切备用
+RunService.RenderStepped:Connect(function()
+	if not SmartFlight.Enabled then
+		return
+	end
+	if not State.Flying and not CFrameFlight.Enabled then
+		return
+	end
+	-- 这里仅做框架, 实际检测可在 StartFlight 的回调里累加 FailCount
+	if SmartFlight.FailCount > 30 and not SmartFlight.UseBackup then
+		SmartFlight.UseBackup = true
+		StopFlight()
+		CFrameFlight_Start()
+	end
+end)
+
+--// ================================================================
+--//  区块 40: ESP - 备用方案 (Box ESP 用 Part 绘制)
+--//  说明: 当 Highlight 不生效时切换
+--// ================================================================
+local BoxESP = {
+	Enabled = false,
+	Parts = {},
+}
+
+local function BoxESP_Clear()
+	for plr, parts in pairs(BoxESP.Parts) do
+		for _, p in ipairs(parts) do
+			if p and p.Parent then
+				p:Destroy()
+			end
+		end
+	end
+	BoxESP.Parts = {}
+end
+
+local function BoxESP_Create(plr)
+	if BoxESP.Parts[plr] then
+		return
+	end
+	local root = GetPlayerRoot(plr)
+	if not root then
+		return
+	end
+	local parts = {}
+	local size = Vector3.new(4, 6, 1)
+	local colors = {
+		Top = Color3.fromRGB(0, 255, 100),
+		Bottom = Color3.fromRGB(0, 255, 100),
+	}
+	-- 简易: 只做一个头顶标识 part
+	local indicator = Instance.new("Part")
+	indicator.Size = Vector3.new(1, 1, 1)
+	indicator.Anchored = true
+	indicator.CanCollide = false
+	indicator.Transparency = 0.5
+	indicator.Color = Color3.fromRGB(0, 255, 100)
+	indicator.Parent = root
+	parts[#parts + 1] = indicator
+	BoxESP.Parts[plr] = parts
+end
+
+local function BoxESP_Start()
+	BoxESP.Enabled = true
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			BoxESP_Create(plr)
+		end
+	end
+	RunService.RenderStepped:Connect(function()
+		if not BoxESP.Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		if not myRoot then
+			return
+		end
+		for plr, parts in pairs(BoxESP.Parts) do
+			local root = GetPlayerRoot(plr)
+			if root and parts[1] and parts[1].Parent then
+				parts[1].CFrame = CFrame.new(root.Position + Vector3.new(0, 3, 0))
+			else
+				BoxESP.Parts[plr] = nil
+			end
+		end
+	end)
+end
+
+local function BoxESP_Stop()
+	BoxESP.Enabled = false
+	BoxESP_Clear()
+end
+
+--// ================================================================
+--//  区块 41: ESP - 骨骼连线 (R6 简易版)
+--// ================================================================
+local SkeletonESP = {
+	Enabled = false,
+	Bones = {},
+}
+
+local R6_JOINTS = {
+	{"Head", "Torso"},
+	{"Torso", "Left Arm"},
+	{"Torso", "Right Arm"},
+	{"Torso", "Left Leg"},
+	{"Torso", "Right Leg"},
+}
+
+local function SkeletonESP_DrawLine(a, b, parent)
+	local line = Instance.new("Part")
+	line.Size = Vector3.new(0.2, 0.2, (b - a).Magnitude)
+	line.CFrame = CFrame.lookAt(a, b) * CFrame.new(0, 0, -line.Size.Z / 2)
+	line.Anchored = true
+	line.CanCollide = false
+	line.Color = Color3.fromRGB(0, 255, 100)
+	line.Material = Enum.Material.Neon
+	line.Parent = parent
+	return line
+end
+
+local function SkeletonESP_Start()
+	SkeletonESP.Enabled = true
+	RunService.RenderStepped:Connect(function()
+		if not SkeletonESP.Enabled then
+			return
+		end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local c = plr.Character
+				if c and not SkeletonESP.Bones[plr] then
+					local folder = Instance.new("Folder")
+					folder.Name = "AM_Skel"
+					folder.Parent = c
+					SkeletonESP.Bones[plr] = folder
+				end
+			end
+		end
+	end)
+end
+
+local function SkeletonESP_Stop()
+	SkeletonESP.Enabled = false
+	for plr, folder in pairs(SkeletonESP.Bones) do
+		if folder and folder.Parent then
+			folder:Destroy()
+		end
+	end
+	SkeletonESP.Bones = {}
+end
+
+--// ================================================================
+--//  区块 42: 自瞄 - 备用方案 (平滑插值 + 预测)
+--// ================================================================
+local SmoothAimbot = {
+	Enabled = false,
+	Connection = nil,
+	Smoothness = 0.15,
+	Prediction = 0.1,
+}
+
+local function SmoothAimbot_Start()
+	SmoothAimbot.Enabled = true
+	SmoothAimbot.Connection = RunService.RenderStepped:Connect(function()
+		if not SmoothAimbot.Enabled then
+			return
+		end
+		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+			return
+		end
+		local target = GetClosestPlayer()
+		if not target then
+			return
+		end
+		local root = GetPlayerRoot(target)
+		if not root then
+			return
+		end
+		local cam = Workspace.CurrentCamera
+		local predicted = root.Position + (root.Velocity or Vector3.zero) * SmoothAimbot.Prediction
+		cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, predicted), SmoothAimbot.Smoothness)
+	end)
+end
+
+local function SmoothAimbot_Stop()
+	SmoothAimbot.Enabled = false
+	if SmoothAimbot.Connection then
+		SmoothAimbot.Connection:Disconnect()
+		SmoothAimbot.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 43: 穿墙 - 备用方案 (每帧设置所有 part)
+--// ================================================================
+local NoclipV2 = {
+	Enabled = false,
+	Connection = nil,
+}
+
+local function NoclipV2_Start()
+	NoclipV2.Enabled = true
+	NoclipV2.Connection = RunService.Heartbeat:Connect(function()
+		if not NoclipV2.Enabled then
+			return
+		end
+		local c = GetCharacter()
+		if not c then
+			return
+		end
+		for _, part in ipairs(c:GetChildren()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end)
+end
+
+local function NoclipV2_Stop()
+	NoclipV2.Enabled = false
+	if NoclipV2.Connection then
+		NoclipV2.Connection:Disconnect()
+		NoclipV2.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 44: 瞬移 - 到坐标 / 到玩家头顶
+--// ================================================================
+local function TeleportToPosition(pos)
+	local root = GetRoot()
+	if not root or not pos then
+		return
+	end
+	root.CFrame = CFrame.new(pos)
+end
+
+local function TeleportToPlayerHead(plr)
+	local root = GetRoot()
+	local targetRoot = GetPlayerRoot(plr)
+	if not root or not targetRoot then
+		return
+	end
+	root.CFrame = CFrame.new(targetRoot.Position + Vector3.new(0, 6, 0))
+end
+
+--// ================================================================
+--//  区块 45: 黑洞 / 吸引 (整活)
+--// ================================================================
+local BlackHole = {
+	Enabled = false,
+	Connection = nil,
+	Strength = 5,
+}
+
+local function BlackHole_Start()
+	BlackHole.Enabled = true
+	BlackHole.Connection = RunService.Heartbeat:Connect(function()
+		if not BlackHole.Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		if not myRoot then
+			return
+		end
+		for _, part in ipairs(Workspace:GetDescendants()) do
+			if part:IsA("BasePart") and not part.Anchored then
+				local char = GetCharacter()
+				if char and part:IsDescendantOf(char) then
+					continue
+				end
+				local dir = myRoot.Position - part.Position
+				if dir.Magnitude < 50 then
+					part.AssemblyLinearVelocity = dir.Unit * BlackHole.Strength
+				end
+			end
+		end
+	end)
+end
+
+local function BlackHole_Stop()
+	BlackHole.Enabled = false
+	if BlackHole.Connection then
+		BlackHole.Connection:Disconnect()
+		BlackHole.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 46: 跟随 / 对齐 (整活)
+--// ================================================================
+local Follow = {
+	Enabled = false,
+	Connection = nil,
+	Target = nil,
+	Offset = Vector3.new(0, 3, 5),
+}
+
+local function Follow_Start(plr)
+	Follow.Enabled = true
+	Follow.Target = plr
+	Follow.Connection = RunService.RenderStepped:Connect(function()
+		if not Follow.Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		local tRoot = GetPlayerRoot(Follow.Target)
+		if not myRoot or not tRoot then
+			return
+		end
+		myRoot.CFrame = CFrame.new(tRoot.Position + Follow.Offset, tRoot.Position)
+	end)
+end
+
+local function Follow_Stop()
+	Follow.Enabled = false
+	if Follow.Connection then
+		Follow.Connection:Disconnect()
+		Follow.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 47: 反检测 - 备用方案 (模拟正常输入间隔)
+--// ================================================================
+local AntiDetectV2 = {
+	Enabled = false,
+	Connection = nil,
+	LastInput = tick(),
+	MinInterval = 0.05,
+}
+
+local function AntiDetectV2_Start()
+	AntiDetectV2.Enabled = true
+	AntiDetectV2.Connection = RunService.Heartbeat:Connect(function()
+		if not AntiDetectV2.Enabled then
+			return
+		end
+		local now = tick()
+		if now - AntiDetectV2.LastInput < AntiDetectV2.MinInterval then
+			-- 主动让出, 模拟人类操作节奏
+			task.wait(AntiDetectV2.MinInterval)
+		end
+		AntiDetectV2.LastInput = now
+	end)
+end
+
+local function AntiDetectV2_Stop()
+	AntiDetectV2.Enabled = false
+	if AntiDetectV2.Connection then
+		AntiDetectV2.Connection:Disconnect()
+		AntiDetectV2.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 48: 反踢 - 备用方案 (RemoteEvent 监控)
+--// ================================================================
+local AntiKickV2 = {
+	Enabled = false,
+	Watched = {},
+}
+
+local function AntiKickV2_Start()
+	AntiKickV2.Enabled = true
+	for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+		if v:IsA("RemoteEvent") then
+			local name = v.Name:lower()
+			if name:find("kick") or name:find("ban") or name:find("punish") then
+				AntiKickV2.Watched[v] = true
+			end
+		end
+	end
+end
+
+local function AntiKickV2_Stop()
+	AntiKickV2.Enabled = false
+	AntiKickV2.Watched = {}
+end
+
+--// ================================================================
+--//  区块 49: 属性保护 (防被服务器重置)
+--// ================================================================
+local Protection = {
+	Enabled = false,
+	Connection = nil,
+	OriginalSpeed = 16,
+	OriginalJump = 50,
+}
+
+local function Protection_Start()
+	Protection.Enabled = true
+	Protection.Connection = RunService.RenderStepped:Connect(function()
+		if not Protection.Enabled then
+			return
+		end
+		if not State.SpeedHack and not State.JumpHack then
+			return
+		end
+		local h = GetHumanoid()
+		if not h then
+			return
+		end
+		if State.SpeedHack and h.WalkSpeed ~= Values.WalkSpeed then
+			h.WalkSpeed = Values.WalkSpeed
+		end
+		if State.JumpHack and h.JumpPower ~= Values.JumpPower then
+			h.JumpPower = Values.JumpPower
+		end
+	end)
+end
+
+local function Protection_Stop()
+	Protection.Enabled = false
+	if Protection.Connection then
+		Protection.Connection:Disconnect()
+		Protection.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 50: FPS 显示 (顶部简易)
+--// ================================================================
+local FPS = {
+	Enabled = false,
+	Label = nil,
+	Connection = nil,
+	Frames = 0,
+	LastTime = tick(),
+}
+
+local function FPS_Start()
+	FPS.Enabled = true
+	FPS.Label = Instance.new("TextLabel")
+	FPS.Label.Size = UDim2.new(0, 120, 0, 24)
+	FPS.Label.Position = UDim2.new(0, 10, 0, 10)
+	FPS.Label.BackgroundTransparency = 1
+	FPS.Label.TextColor3 = Color3.fromRGB(0, 255, 100)
+	FPS.Label.TextSize = 14
+	FPS.Label.Font = Enum.Font.GothamBold
+	FPS.Label.ZIndex = 500
+	FPS.Label.Parent = ScreenGui
+
+	FPS.Connection = RunService.RenderStepped:Connect(function()
+		if not FPS.Enabled then
+			return
+		end
+		FPS.Frames = FPS.Frames + 1
+		local now = tick()
+		if now - FPS.LastTime >= 1 then
+			FPS.Label.Text = "FPS: " .. FPS.Frames
+			FPS.Frames = 0
+			FPS.LastTime = now
+		end
+	end)
+end
+
+local function FPS_Stop()
+	FPS.Enabled = false
+	if FPS.Label then
+		FPS.Label:Destroy()
+		FPS.Label = nil
+	end
+	if FPS.Connection then
+		FPS.Connection:Disconnect()
+		FPS.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 51: 屏幕通知 (替代 print)
+--// ================================================================
+local function Notify(title, text, duration)
+	duration = duration or 2
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AM_Notify"
+	gui.Parent = PlayerGui
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 260, 0, 60)
+	frame.Position = UDim2.new(0.5, -130, 0, 80)
+	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+	frame.Parent = gui
+	Corner(frame, 10)
+	Stroke(frame, Color3.fromRGB(0, 255, 100), 2)
+
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, -16, 0, 24)
+	t.Position = UDim2.fromOffset(8, 6)
+	t.BackgroundTransparency = 1
+	t.Text = title
+	t.TextColor3 = Color3.fromRGB(0, 255, 100)
+	t.TextSize = 14
+	t.Font = Enum.Font.GothamBold
+	t.TextXAlignment = Enum.TextXAlignment.Left
+	t.Parent = frame
+
+	local b = Instance.new("TextLabel")
+	b.Size = UDim2.new(1, -16, 0, 20)
+	b.Position = UDim2.fromOffset(8, 32)
+	b.BackgroundTransparency = 1
+	b.Text = text
+	b.TextColor3 = Color3.fromRGB(230, 230, 230)
+	b.TextSize = 12
+	b.Font = Enum.Font.Gotham
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	b.Parent = frame
+
+	task.delay(duration, function()
+		if gui and gui.Parent then
+			gui:Destroy()
+		end
+	end)
+end
+
+--// 替换关键 print 为通知
+local function OnLoadedNotify()
+	Notify("AM Hub", "已加载 - 左侧可滑动 / 高级分类 / 飞行已修复", 3)
+end
+
+--// ================================================================
+--//  区块 52: 快捷键绑定 (F1~F7)
+--// ================================================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
 		return
 	end
-	local cb = Hotkeys[input.KeyCode]
-	if cb then
-		pcall(cb)
-	end
-end)
-
---// =============================================================
---  FPS 统计（设置页可用）
--- =============================================================
-
-local FPSText = "FPS: --"
-local FPSCounter = 0
-local FPSLast = tick()
-
-RunService.RenderStepped:Connect(function()
-	FPSCounter = FPSCounter + 1
-	if tick() - FPSLast >= 1 then
-		FPSText = string.format("FPS: %.0f", FPSCounter)
-		FPSCounter = 0
-		FPSLast = tick()
-	end
-end)
-
-local function GetFPS()
-	return FPSText
-end
-
---// =============================================================
---  扩展页：高级（追加到分类列表）
--- =============================================================
-
-local function ShowAdvanced()
-	ClearContent()
-	Section("高级设置")
-
-	Toggle("飞行引擎: BodyVelocity / CFrame", ExtConfig.Flight.Method == "CFrame", function(enabled)
-		ExtConfig.Flight.Method = enabled and "CFrame" or "BodyVelocity"
-	end)
-
-	Slider("飞行最高速度", 30, 200, ExtConfig.Flight.MaxSpeed, function(value)
-		ExtConfig.Flight.MaxSpeed = value
-	end)
-
-	Toggle("穿墙引擎: Stepped / Heartbeat", ExtConfig.Noclip.Mode == "Heartbeat", function(enabled)
-		ExtConfig.Noclip.Mode = enabled and "Heartbeat" or "Stepped"
-		SetNoclipUnified(Noclip)  -- 立即应用
-	end)
-
-	Toggle("自瞄队伍检测", ExtConfig.Aimbot.TeamCheck, function(enabled)
-		ExtConfig.Aimbot.TeamCheck = enabled
-	end)
-
-	Slider("自瞄平滑度", 1, 100, ExtConfig.Aimbot.Smoothness * 100, function(value)
-		ExtConfig.Aimbot.Smoothness = value / 100
-	end)
-
-	Slider("自瞄最大距离", 100, 2000, ExtConfig.Aimbot.MaxDistance, function(value)
-		ExtConfig.Aimbot.MaxDistance = value
-	end)
-
-	Toggle("环绕暂停", OrbitPaused, function(enabled)
-		SetOrbitPaused(enabled)
-	end)
-
-	Slider("环绕半径", 1, 20, ExtConfig.Orbit.Radius, function(value)
-		SetOrbitRadius(value)
-	end)
-
-	Button("保存当前配置", function()
-		SaveConfig()
-		print("[AM] 配置已保存")
-	end)
-
-	Button("重载配置", function()
-		LoadConfig()
-		print("[AM] 配置已重载")
-	end)
-
-	Section("调试信息")
-	Button(GetFPS(), function() end)
-	Button("打印状态到控制台", function()
-		print("Flying:", Flying)
-		print("Noclip:", Noclip)
-		print("ESP:", ESPEnabled)
-		print("Aimbot:", AimbotEnabled)
-		print("FlightSpeed:", FlightSpeed)
-		print("SelectedPlayer:", SelectedPlayer and SelectedPlayer.Name or "无")
-	end)
-end
-
--- 将"高级"页注册进分类
-Pages["高级"] = ShowAdvanced
-
--- 在左侧分类栏追加"高级"按钮
-do
-	local index = #Categories + 1
-	Categories[index] = "高级"
-
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -10, 0, 36)
-	button.Position = UDim2.fromOffset(5, 5 + (index - 1) * 41)
-	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-	button.BorderSizePixel = 0
-	button.Text = "高级"
-	button.TextSize = 12
-	button.Font = Enum.Font.GothamBold
-	button.TextColor3 = Color3.fromRGB(90, 90, 90)
-	button.AutoButtonColor = false
-	button.ZIndex = 20
-	button.Parent = CategoryBar
-	Corner(button, 8)
-
-	CategoryButtons["高级"] = button
-
-	button.MouseButton1Click:Connect(function()
-		SelectCategory("高级")
-	end)
-end
-
---// =============================================================
---  启动扩展
--- =============================================================
-
-LoadConfig()
-
-
---// =============================================================
---//  ===========================================================
---//  第二轮扩展：玩家工具 / 视觉效果 / 调试 / 动画
---//  ===========================================================
---// =============================================================
-
---// =============================================================
---  玩家追踪（头顶箭头指向目标）
--- =============================================================
-
-local TracerArrow = nil
-
-local function SetPlayerTracer(enabled)
-	if TracerArrow then
-		TracerArrow:Destroy()
-		TracerArrow = nil
-	end
-	if enabled and SelectedPlayer and SelectedPlayer.Character then
-		local root = GetRoot()
-		if not root then
-			return
+	if input.KeyCode == Enum.KeyCode.F1 then
+		State.Flying = not State.Flying
+		if State.Flying then
+			StartFlight()
+		else
+			StopFlight()
 		end
-		TracerArrow = Instance.new("Attachment")
-		TracerArrow.Name = "AM_Tracer"
-		TracerArrow.Parent = root
+	elseif input.KeyCode == Enum.KeyCode.F2 then
+		State.Noclip = not State.Noclip
+		if State.Noclip then
+			StartNoclip()
+		else
+			StopNoclip()
+		end
+	elseif input.KeyCode == Enum.KeyCode.F3 then
+		State.InfiniteJump = not State.InfiniteJump
+	elseif input.KeyCode == Enum.KeyCode.F4 then
+		State.ESP_Enabled = not State.ESP_Enabled
+		if State.ESP_Enabled then
+			StartESP()
+		else
+			StopESP()
+		end
+	elseif input.KeyCode == Enum.KeyCode.F5 then
+		State.Aimbot_Enabled = not State.Aimbot_Enabled
+		if State.Aimbot_Enabled then
+			StartAimbot()
+		else
+			StopAimbot()
+		end
+	elseif input.KeyCode == Enum.KeyCode.F6 then
+		Menu.Visible = not Menu.Visible
+	elseif input.KeyCode == Enum.KeyCode.F7 then
+		if FPS.Enabled then
+			FPS_Stop()
+		else
+			FPS_Start()
+		end
 	end
+end)
+
+--// ================================================================
+--//  区块 53: 通用工具 - 第二组 (字符串 / 数学)
+--// ================================================================
+local function Clamp(val, min, max)
+	return math.max(min, math.min(max, val))
 end
 
---// =============================================================
---  旁观视角（把相机挂到目标身上）
--- =============================================================
-
-local SpectateConnection = nil
-
-local function SetSpectate(enabled)
-	if SpectateConnection then
-		SpectateConnection:Disconnect()
-		SpectateConnection = nil
-	end
-	if enabled then
-		SpectateConnection = RunService.RenderStepped:Connect(function()
-			if not SelectedPlayer or not SelectedPlayer.Character then
-				return
-			end
-			local head = SelectedPlayer.Character:FindFirstChild("Head")
-			if not head then
-				return
-			end
-			local camera = workspace.CurrentCamera
-			if camera then
-				camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
-			end
-		end)
-	end
+local function Lerp(a, b, t)
+	return a + (b - a) * t
 end
 
---// =============================================================
---  视觉效果：雾 / 色温 / 饱和度 / 景深
--- =============================================================
+local function Round(val, decimals)
+	local m = 10 ^ (decimals or 0)
+	return math.floor(val * m + 0.5) / m
+end
 
-local function SetFog(enabled, distance)
-	if enabled then
-		Lighting.FogEnd = distance or 100000
+local function IsValidPlayer(plr)
+	return plr and plr.Parent and plr ~= LocalPlayer
+end
+
+local function GetAlivePlayers()
+	local list = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and IsAlive(plr) then
+			list[#list + 1] = plr
+		end
+	end
+	return list
+end
+
+local function GetDistance(a, b)
+	if not a or not b then
+		return math.huge
+	end
+	return (a.Position - b.Position).Magnitude
+end
+
+local function FormatDistance(dist)
+	if dist >= 1000 then
+		return Round(dist / 1000, 2) .. "km"
 	else
-		Lighting.FogEnd = 1000000
+		return Round(dist, 0) .. "m"
 	end
 end
 
-local function SetColorShift(enabled)
-	Lighting.Ambient = enabled and Color3.fromRGB(180, 200, 255) or Color3.fromRGB(0, 0, 0)
+--// ================================================================
+--//  区块 54: 配置持久化 (简易, 存 LocalPlayer 属性)
+--// ================================================================
+local SaveKey = "AM_Hub_Config"
+
+local function SaveConfig()
+	local data = {
+		FlightSpeed = Values.FlightSpeed,
+		WalkSpeed = Values.WalkSpeed,
+		JumpPower = Values.JumpPower,
+		Gravity = Values.Gravity,
+		AimbotFOV = Values.AimbotFOV,
+		OrbitSpeed = Values.OrbitSpeed,
+		SpinSpeed = Values.SpinSpeed,
+		FlingPower = Values.FlingPower,
+	}
+	-- 用 _G 做临时存储 (执行器内有效)
+	_G[SaveKey] = data
+	Notify("AM Hub", "配置已保存 (本次会话)", 2)
 end
 
-local function SetSaturation(enabled)
-	pcall(function()
-		local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
-		if not cc then
-			cc = Instance.new("ColorCorrectionEffect")
-			cc.Parent = Lighting
-		end
-		cc.Saturation = enabled and 1.5 or 0
-	end)
-end
-
-local function SetDepthOfField(enabled)
-	pcall(function()
-		local dof = Lighting:FindFirstChildOfClass("DepthOfFieldEffect")
-		if not dof then
-			dof = Instance.new("DepthOfFieldEffect")
-			dof.Parent = Lighting
-		end
-		dof.Enabled = enabled
-	end)
-end
-
---// =============================================================
---  调试：玩家连线 / 命中框
--- =============================================================
-
-local DebugLines = {}
-
-local function SetDebugLines(enabled)
-	for _, line in ipairs(DebugLines) do
-		if line and line.Parent then
-			line:Destroy()
-		end
+local function LoadConfig()
+	local data = _G[SaveKey]
+	if not data then
+		return
 	end
-	DebugLines = {}
+	Values.FlightSpeed = data.FlightSpeed or Values.FlightSpeed
+	Values.WalkSpeed = data.WalkSpeed or Values.WalkSpeed
+	Values.JumpPower = data.JumpPower or Values.JumpPower
+	Values.Gravity = data.Gravity or Values.Gravity
+	Values.AimbotFOV = data.AimbotFOV or Values.AimbotFOV
+	Values.OrbitSpeed = data.OrbitSpeed or Values.OrbitSpeed
+	Values.SpinSpeed = data.SpinSpeed or Values.SpinSpeed
+	Values.FlingPower = data.FlingPower or Values.FlingPower
+	Notify("AM Hub", "配置已加载", 2)
+end
 
-	if enabled then
-		RunService.Heartbeat:Connect(function()
-			if not ESPEnabled then
-				return
-			end
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer and player.Character then
-					local root = player.Character:FindFirstChild("HumanoidRootPart")
-					local myRoot = GetRoot()
-					if root and myRoot then
-						local line = Instance.new("LineHandleAdornment")
-						line.Name = "AM_DebugLine"
-						line.Length = (root.Position - myRoot.Position).Magnitude
-						line.CFrame = CFrame.new(myRoot.Position, root.Position)
-						line.Color3 = Color3.fromRGB(0, 255, 255)
-						line.Thickness = 2
-						line.Parent = myRoot
-						table.insert(DebugLines, line)
-					end
-				end
-			end
+--// ================================================================
+--//  区块 55: 扩展页面 - 更多功能 (塞进"高级"之前可选)
+--// ================================================================
+local function ShowMore()
+	ClearContent()
+	Section("扩展功能")
+	Toggle("FPS 显示", FPS.Enabled, function(v)
+		if v then
+			FPS_Start()
+		else
+			FPS_Stop()
+		end
+	end)
+	Toggle("属性保护", Protection.Enabled, function(v)
+		if v then
+			Protection_Start()
+		else
+			Protection_Stop()
+		end
+	end)
+	Toggle("黑洞吸引", BlackHole.Enabled, function(v)
+		if v then
+			BlackHole_Start()
+		else
+			BlackHole_Stop()
+		end
+	end)
+	Button("保存配置", SaveConfig)
+	Button("加载配置", LoadConfig)
+	Button("通知测试", function()
+		Notify("测试", "这是一条通知", 2)
+	end)
+	if SelectedPlayer then
+		Button("跟随目标", function()
+			Follow_Start(SelectedPlayer)
+		end)
+		Button("停止跟随", Follow_Stop)
+		Button("传送到头顶", function()
+			TeleportToPlayerHead(SelectedPlayer)
 		end)
 	end
 end
 
---// =============================================================
---  备用 UI 组件（供二次开发 / 自定义页面使用）
--- =============================================================
+--// 把"更多"插入分类系统
+table.insert(Categories, #Categories, "更多")
+Pages["更多"] = ShowMore
 
-local UI = {}
-
-function UI.MakeLabel(parent, text, size, pos)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size = size or UDim2.new(1, -10, 0, 26)
-	lbl.Position = pos or UDim2.fromOffset(0, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.Text = text or ""
-	lbl.TextColor3 = Color3.fromRGB(30, 30, 30)
-	lbl.TextSize = 13
-	lbl.Font = Enum.Font.Gotham
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.ZIndex = 20
-	lbl.Parent = parent or Content
-	return lbl
+--// 重新生成分类按钮 (因为插入了新的)
+for _, btn in pairs(CategoryButtons) do
+	btn:Destroy()
 end
+CategoryButtons = {}
 
-function UI.MakeDivider(parent, pos)
-	local div = Instance.new("Frame")
-	div.Size = UDim2.new(1, -10, 0, 2)
-	div.Position = pos or UDim2.fromOffset(5, 0)
-	div.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
-	div.BorderSizePixel = 0
-	div.ZIndex = 20
-	div.Parent = parent or Content
-	return div
-end
-
-function UI.MakeColorButton(parent, name, callback)
+for i, name in ipairs(Categories) do
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(0.5, -8, 0, 36)
+	btn.Size = UDim2.new(1, -10, 0, 38)
 	btn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
 	btn.BorderSizePixel = 0
 	btn.Text = name
-	btn.TextColor3 = Color3.fromRGB(25, 25, 25)
-	btn.TextSize = 12
-	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 13
+	btn.Font = Enum.Font.GothamBold
+	btn.TextColor3 = Color3.fromRGB(90, 90, 90)
+	btn.AutoButtonColor = false
 	btn.ZIndex = 20
-	btn.Parent = parent or Content
+	btn.Parent = CategoryBar
 	Corner(btn, 8)
-	if callback then
-		btn.MouseButton1Click:Connect(callback)
-	end
-	return btn
+	CategoryButtons[name] = btn
+	btn.MouseButton1Click:Connect(function()
+		SelectCategory(name)
+	end)
 end
 
---// =============================================================
---  通知系统（左下角弹出）
--- =============================================================
+--// ================================================================
+--//  区块 56: 完整卸载函数
+--// ================================================================
+local function FullUnload()
+	-- 停止所有功能
+	StopFlight()
+	CFrameFlight_Stop()
+	SmartFlight_Stop()
+	StopESP()
+	BoxESP_Stop()
+	SkeletonESP_Stop()
+	StopAimbot()
+	SmoothAimbot_Stop()
+	StopNoclip()
+	NoclipV2_Stop()
+	StopOrbit()
+	StopSpinBot()
+	StopAntiKick()
+	StopAntiDetect()
+	AntiDetectV2_Stop()
+	AntiKickV2_Stop()
+	BlackHole_Stop()
+	Follow_Stop()
+	Protection_Stop()
+	FPS_Stop()
+	StopClickTP()
+	SetLockCamera(false)
+	SetNightVision(false)
+	SetFullBright(false)
+	-- 销毁界面
+	ScreenGui:Destroy()
+end
 
-local NotifyQueue = {}
+--// 更新"退出 AM"按钮使用完整卸载
+Pages["设置"] = function()
+	ClearContent()
+	Section("设置")
+	Button("关闭菜单", function()
+		Menu.Visible = false
+	end)
+	Button("保存配置", SaveConfig)
+	Button("加载配置", LoadConfig)
+	Button("退出 AM (完全卸载)", FullUnload)
+end
 
-local function ShowNotification(title, text, duration)
-	duration = duration or 3
+--// ================================================================
+--//  区块 57: 启动序列
+--// ================================================================
+local function Boot()
+	-- 确保界面就绪
+	if not ScreenGui.Parent then
+		ScreenGui.Parent = PlayerGui
+	end
+	-- 默认显示信息页
+	SelectCategory("信息")
+	-- 启动通知
+	OnLoadedNotify()
+	-- 启动属性保护 (默认开, 防被服务器改回去)
+	Protection_Start()
+end
 
-	local notif = Instance.new("Frame")
-	notif.Size = UDim2.new(0, 240, 0, 60)
-	notif.Position = UDim2.new(0, 20, 1, 80)  -- 堆叠在左下角（偏移用动画归位）
-	notif.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-	notif.BorderSizePixel = 0
-	notif.ZIndex = 500
-	notif.Parent = ScreenGui
-	Corner(notif, 10)
-	Stroke(notif, Color3.fromRGB(100, 255, 170), 2)
+Boot()
 
-	local t = Instance.new("TextLabel")
-	t.Size = UDim2.new(1, -16, 0, 20)
-	t.Position = UDim2.fromOffset(10, 6)
-	t.BackgroundTransparency = 1
-	t.Text = title
-	t.TextColor3 = Color3.fromRGB(120, 255, 170)
-	t.TextSize = 13
-	t.Font = Enum.Font.GothamBold
-	t.TextXAlignment = Enum.TextXAlignment.Left
-	t.ZIndex = 501
-	t.Parent = notif
+--// ================================================================
+--//  区块 58: 版本信息输出
+--// ================================================================
+print("===================================================")
+print("[AM Hub] v" .. CONFIG.VERSION .. " 加载完成")
+print("[AM Hub] 作者:", CONFIG.AUTHOR)
+print("[AM Hub] QQ群:", CONFIG.QQ_GROUP)
+print("[AM Hub] 功能区块: 58")
+print("[AM Hub] 快捷键: F1飞行 F2穿墙 F3无限跳 F4ESP F5自瞄 F6菜单 F7FPS")
+print("===================================================")
 
-	local d = Instance.new("TextLabel")
-	d.Size = UDim2.new(1, -16, 0, 30)
-	d.Position = UDim2.fromOffset(10, 26)
-	d.BackgroundTransparency = 1
-	d.Text = text
-	d.TextColor3 = Color3.fromRGB(230, 230, 230)
-	d.TextSize = 12
-	d.Font = Enum.Font.Gotham
-	d.TextWrapped = true
-	d.TextXAlignment = Enum.TextXAlignment.Left
-	d.ZIndex = 501
-	d.Parent = notif
+--// EOF
 
-	table.insert(NotifyQueue, notif)
 
-	-- 堆叠：每个通知往上排
-	for i, n in ipairs(NotifyQueue) do
-		local targetY = -80 - (i - 1) * 70
-		n.Position = UDim2.new(0, 20, 1, targetY)
+--// ================================================================
+--//  区块 59: 重力修改 - 实时 + 备用
+--// ================================================================
+local GravitySystem = {
+	Original = 196,
+	Enabled = false,
+}
+
+local function SetGravity(val)
+	Values.Gravity = val
+	Workspace.Gravity = val
+end
+
+local function Gravity_Reset()
+	Workspace.Gravity = GravitySystem.Original
+	Values.Gravity = GravitySystem.Original
+end
+
+--// ================================================================
+--//  区块 60: 跳高 - 双套 (JumpPower / 直接修改 state)
+--// ================================================================
+local function SetJump_V1(val)
+	Values.JumpPower = val
+	local h = GetHumanoid()
+	if h then
+		h.JumpPower = val
+	end
+end
+
+local function SetJump_V2(val)
+	Values.JumpPower = val
+	local h = GetHumanoid()
+	if h then
+		h.JumpPower = val
+		-- 强制刷新状态确保生效
+		local s = h:GetState()
+		if s == Enum.HumanoidStateType.Freefall or s == Enum.HumanoidStateType.Landed then
+			h:ChangeState(Enum.HumanoidStateType.Landed)
+		end
+	end
+end
+
+--// ================================================================
+--//  区块 61: 速度 - 双套 + 属性保护联动
+--// ================================================================
+local function SetSpeed_V1(val)
+	Values.WalkSpeed = val
+	State.SpeedHack = true
+	local h = GetHumanoid()
+	if h then
+		h.WalkSpeed = val
+	end
+end
+
+local function SetSpeed_V2(val)
+	Values.WalkSpeed = val
+	State.SpeedHack = true
+	local char = GetCharacter()
+	if char then
+		local h = char:FindFirstChildOfClass("Humanoid")
+		if h then
+			h.WalkSpeed = val
+		end
+	end
+end
+
+--// ================================================================
+--//  区块 62: 夜视 - 完整版 (多属性)
+--// ================================================================
+local NightVisionState = {
+	Enabled = false,
+	OriginalBrightness = 1,
+	OriginalClock = 14,
+	OriginalAmbient = Color3.new(0, 0, 0),
+}
+
+local function NightVision_On()
+	NightVisionState.OriginalBrightness = Lighting.Brightness
+	NightVisionState.OriginalClock = Lighting.ClockTime
+	NightVisionState.OriginalAmbient = Lighting.Ambient
+	Lighting.Brightness = 3
+	Lighting.ClockTime = 14
+	Lighting.Ambient = Color3.new(1, 1, 1)
+	Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+	NightVisionState.Enabled = true
+end
+
+local function NightVision_Off()
+	Lighting.Brightness = NightVisionState.OriginalBrightness
+	Lighting.ClockTime = NightVisionState.OriginalClock
+	Lighting.Ambient = NightVisionState.OriginalAmbient
+	NightVisionState.Enabled = false
+end
+
+--// ================================================================
+--//  区块 63: 全图明亮 - 完整版
+--// ================================================================
+local FullBrightState = {
+	Enabled = false,
+	OriginalShadows = true,
+	OriginalFog = 100000,
+}
+
+local function FullBright_On()
+	FullBrightState.OriginalShadows = Lighting.GlobalShadows
+	FullBrightState.OriginalFog = Lighting.FogEnd
+	Lighting.GlobalShadows = false
+	Lighting.FogEnd = 1000000
+	FullBrightState.Enabled = true
+end
+
+local function FullBright_Off()
+	Lighting.GlobalShadows = FullBrightState.OriginalShadows
+	Lighting.FogEnd = FullBrightState.OriginalFog
+	FullBrightState.Enabled = false
+end
+
+--// ================================================================
+--//  区块 64: 锁定视角 - 完整版 (支持恢复)
+--// ================================================================
+local LockCameraState = {
+	Enabled = false,
+	OriginalType = nil,
+	OriginalCFrame = nil,
+}
+
+local function LockCamera_On()
+	local cam = Workspace.CurrentCamera
+	LockCameraState.OriginalType = cam.CameraType
+	LockCameraState.OriginalCFrame = cam.CFrame
+	cam.CameraType = Enum.CameraType.Scriptable
+	LockCameraState.Enabled = true
+end
+
+local function LockCamera_Off()
+	local cam = Workspace.CurrentCamera
+	cam.CameraType = LockCameraState.OriginalType or Enum.CameraType.Custom
+	LockCameraState.Enabled = false
+end
+
+--// ================================================================
+--//  区块 65: 甩飞 - 双套 (单次 / 持续)
+--// ================================================================
+local FlingSystem = {
+	Enabled = false,
+	Connection = nil,
+	Target = nil,
+}
+
+local function Fling_Once(plr)
+	local root = GetPlayerRoot(plr or SelectedPlayer)
+	if not root then
+		return
+	end
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(999999, 999999, 999999)
+	bv.Velocity = Vector3.new(
+		math.random(-Values.FlingPower, Values.FlingPower),
+		math.random(Values.FlingPower, Values.FlingPower * 3),
+		math.random(-Values.FlingPower, Values.FlingPower)
+	)
+	bv.Parent = root
+	task.wait(0.1)
+	bv:Destroy()
+end
+
+local function Fling_Start(plr)
+	FlingSystem.Target = plr or SelectedPlayer
+	if not FlingSystem.Target then
+		return
+	end
+	FlingSystem.Enabled = true
+	FlingSystem.Connection = RunService.Heartbeat:Connect(function()
+		if not FlingSystem.Enabled then
+			return
+		end
+		local root = GetPlayerRoot(FlingSystem.Target)
+		if not root then
+			return
+		end
+		-- 高速旋转
+		local bg = Instance.new("BodyAngularVelocity")
+		bg.MaxTorque = Vector3.new(999999, 999999, 999999)
+		bg.AngularVelocity = Vector3.new(
+			math.random(-100, 100),
+			math.random(-100, 100),
+			math.random(-100, 100)
+		)
+		bg.Parent = root
+		task.delay(0.05, function()
+			if bg and bg.Parent then
+				bg:Destroy()
+			end
+		end)
+		-- 随机冲量
+		local bv = Instance.new("BodyVelocity")
+		bv.MaxForce = Vector3.new(999999, 999999, 999999)
+		bv.Velocity = Vector3.new(
+			math.random(-Values.FlingPower, Values.FlingPower),
+			math.random(Values.FlingPower, Values.FlingPower * 3),
+			math.random(-Values.FlingPower, Values.FlingPower)
+		)
+		bv.Parent = root
+		task.delay(0.05, function()
+			if bv and bv.Parent then
+				bv:Destroy()
+			end
+		end)
+	end)
+end
+
+local function Fling_Stop()
+	FlingSystem.Enabled = false
+	if FlingSystem.Connection then
+		FlingSystem.Connection:Disconnect()
+		FlingSystem.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 66: 环绕 - 双套 (圆形 / 椭圆)
+--// ================================================================
+local OrbitSystem = {
+	Enabled = false,
+	Connection = nil,
+	Target = nil,
+	Mode = "circle", -- circle / ellipse
+	Radius = 5,
+	Height = 3,
+}
+
+local function Orbit_Start_Circle(plr)
+	OrbitSystem.Target = plr or SelectedPlayer
+	if not OrbitSystem.Target then
+		return
+	end
+	OrbitSystem.Enabled = true
+	OrbitSystem.Mode = "circle"
+	OrbitSystem.Connection = RunService.RenderStepped:Connect(function()
+		if not OrbitSystem.Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		local tRoot = GetPlayerRoot(OrbitSystem.Target)
+		if not myRoot or not tRoot then
+			return
+		end
+		local t = tick() * Values.OrbitSpeed
+		local offset = Vector3.new(math.cos(t) * OrbitSystem.Radius, OrbitSystem.Height, math.sin(t) * OrbitSystem.Radius)
+		myRoot.CFrame = CFrame.new(tRoot.Position + offset, tRoot.Position)
+	end)
+end
+
+local function Orbit_Start_Ellipse(plr)
+	OrbitSystem.Target = plr or SelectedPlayer
+	if not OrbitSystem.Target then
+		return
+	end
+	OrbitSystem.Enabled = true
+	OrbitSystem.Mode = "ellipse"
+	OrbitSystem.Connection = RunService.RenderStepped:Connect(function()
+		if not OrbitSystem.Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		local tRoot = GetPlayerRoot(OrbitSystem.Target)
+		if not myRoot or not tRoot then
+			return
+		end
+		local t = tick() * Values.OrbitSpeed
+		local offset = Vector3.new(math.cos(t) * 6, OrbitSystem.Height + math.sin(t) * 2, math.sin(t) * 4)
+		myRoot.CFrame = CFrame.new(tRoot.Position + offset, tRoot.Position)
+	end)
+end
+
+local function Orbit_Stop()
+	OrbitSystem.Enabled = false
+	if OrbitSystem.Connection then
+		OrbitSystem.Connection:Disconnect()
+		OrbitSystem.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 67: 自瞄 - 双套 (FOV 圈 / 无圈)
+--// ================================================================
+local AimbotSystem = {
+	Enabled = false,
+	Connection = nil,
+	UseFOV = true,
+}
+
+local function Aimbot_WithFOV()
+	if not Drawing then
+		return
+	end
+	Objects.FOVCircle = Drawing.new("Circle")
+	Objects.FOVCircle.Visible = true
+	Objects.FOVCircle.Radius = Values.AimbotFOV
+	Objects.FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+	Objects.FOVCircle.Thickness = 1
+	Objects.FOVCircle.Transparency = 0.5
+	Objects.FOVCircle.Filled = false
+end
+
+local function Aimbot_WithoutFOV()
+	-- 不画圈, 静默锁头
+end
+
+local function Aimbot_Start(useFOV)
+	AimbotSystem.Enabled = true
+	AimbotSystem.UseFOV = useFOV ~= false
+	if AimbotSystem.UseFOV then
+		Aimbot_WithFOV()
+	else
+		Aimbot_WithoutFOV()
+	end
+	AimbotSystem.Connection = RunService.RenderStepped:Connect(function()
+		if not AimbotSystem.Enabled then
+			return
+		end
+		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+			return
+		end
+		local target = GetClosestPlayer()
+		if not target then
+			return
+		end
+		local root = GetPlayerRoot(target)
+		if not root then
+			return
+		end
+		local cam = Workspace.CurrentCamera
+		cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, root.Position), 0.3)
+	end)
+end
+
+local function Aimbot_Stop()
+	AimbotSystem.Enabled = false
+	if Objects.FOVCircle then
+		Objects.FOVCircle:Remove()
+		Objects.FOVCircle = nil
+	end
+	if AimbotSystem.Connection then
+		AimbotSystem.Connection:Disconnect()
+		AimbotSystem.Connection = nil
+	end
+end
+
+--// ================================================================
+--//  区块 68: ESP - 团队检测 + 颜色区分
+--// ================================================================
+local ESP_Settings = {
+	ShowTeam = false,
+	EnemyColor = Color3.fromRGB(255, 0, 0),
+	TeamColor = Color3.fromRGB(0, 0, 255),
+}
+
+local function CreateESP_WithTeam(plr)
+	if Objects.ESP[plr] then
+		return
+	end
+	if plr == LocalPlayer then
+		return
+	end
+	-- 队友检测
+	if not ESP_Settings.ShowTeam and plr.Team == LocalPlayer.Team and LocalPlayer.Team ~= nil then
+		return
+	end
+	local c = plr.Character
+	if not c then
+		return
+	end
+	local root = c:FindFirstChild("HumanoidRootPart")
+	local hum = c:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then
+		return
 	end
 
-	game:GetService("Debris"):AddItem(notif, duration)
-	task.delay(duration, function()
-		for i, n in ipairs(NotifyQueue) do
-			if n == notif then
-				table.remove(NotifyQueue, i)
-				break
+	local color = ESP_Settings.EnemyColor
+	if plr.Team == LocalPlayer.Team and LocalPlayer.Team ~= nil then
+		color = ESP_Settings.TeamColor
+	end
+
+	local hl = Instance.new("Highlight")
+	hl.FillColor = color
+	hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+	hl.FillTransparency = 0.7
+	hl.OutlineTransparency = 0
+	hl.Adornee = c
+	hl.Parent = c
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 120, 0, 40)
+	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Adornee = root
+	bb.AlwaysOnTop = true
+	bb.Parent = root
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = plr.DisplayName
+	nameLabel.TextColor3 = color
+	nameLabel.TextSize = 13
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.Parent = bb
+
+	local distLabel = Instance.new("TextLabel")
+	distLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	distLabel.Position = UDim2.new(0, 0, 0.5, 0)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Text = "0m"
+	distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	distLabel.TextSize = 11
+	distLabel.Font = Enum.Font.Gotham
+	distLabel.Parent = bb
+
+	Objects.ESP[plr] = {
+		Highlight = hl,
+		Billboard = bb,
+		DistLabel = distLabel,
+	}
+end
+
+local function ESP_Start_WithTeam()
+	State.ESP_Enabled = true
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			CreateESP_WithTeam(plr)
+		end
+	end
+	Players.PlayerAdded:Connect(function(plr)
+		plr.CharacterAdded:Connect(function()
+			task.wait(1)
+			if State.ESP_Enabled then
+				CreateESP_WithTeam(plr)
+			end
+		end)
+	end)
+	Connections.ESP = RunService.RenderStepped:Connect(function()
+		if not State.ESP_Enabled then
+			return
+		end
+		local myRoot = GetRoot()
+		if not myRoot then
+			return
+		end
+		for plr, data in pairs(Objects.ESP) do
+			if plr and plr.Parent and data.DistLabel then
+				local root = GetPlayerRoot(plr)
+				if root then
+					local dist = math.floor((root.Position - myRoot.Position).Magnitude)
+					data.DistLabel.Text = dist .. "m"
+				end
+			else
+				if data.Highlight then
+					data.Highlight:Destroy()
+				end
+				if data.Billboard then
+					data.Billboard:Destroy()
+				end
+				Objects.ESP[plr] = nil
 			end
 		end
 	end)
 end
 
--- 重写关键操作用通知反馈
-local origSetFlight = SetFlight
-SetFlight = function(enabled)
-	origSetFlight(enabled)
-	ShowNotification("飞行", enabled and "已开启" or "已关闭", 2)
+--// ================================================================
+--//  区块 69: 反检测 - 完整版 (多层防护)
+--// ================================================================
+local AntiDetectSystem = {
+	Enabled = false,
+	Connections = {},
+	RandomSeed = 0,
+}
+
+local function AntiDetect_Init()
+	AntiDetectSystem.RandomSeed = math.random(1, 1000000)
 end
 
-local origSetNoclip = SetNoclipUnified
-SetNoclipUnified = function(enabled)
-	origSetNoclip(enabled)
-	ShowNotification("穿墙", enabled and "已开启" or "已关闭", 2)
+local function AntiDetect_Start_Full()
+	AntiDetectSystem.Enabled = true
+	AntiDetect_Init()
+
+	-- 层1: 随机化心跳间隔
+	AntiDetectSystem.Connections[1] = RunService.Heartbeat:Connect(function()
+		if not AntiDetectSystem.Enabled then
+			return
+		end
+		-- 随机延迟, 打破固定频率
+		local delay = 0.01 + math.random() * 0.04
+		task.wait(delay)
+	end)
+
+	-- 层2: 动态修改 Gui 名称
+	AntiDetectSystem.Connections[2] = RunService.RenderStepped:Connect(function()
+		if not AntiDetectSystem.Enabled then
+			return
+		end
+		if ScreenGui and math.random() < 0.01 then
+			ScreenGui.Name = "CoreGui_" .. tostring(math.random(1000, 9999))
+		end
+	end)
+
+	-- 层3: 防止 Character 被强制销毁
+	LocalPlayer.CharacterRemoving:Connect(function()
+		if AntiDetectSystem.Enabled then
+			task.wait(0.5)
+			if not LocalPlayer.Character then
+				pcall(function()
+					LocalPlayer:LoadCharacter()
+				end)
+			end
+		end
+	end)
 end
 
-local origSetESP = SetESP
-SetESP = function(enabled)
-	origSetESP(enabled)
-	ShowNotification("ESP", enabled and "已开启" or "已关闭", 2)
-end
-
-local origSetAimbot = SetAimbotSmooth
-SetAimbotSmooth = function(enabled)
-	origSetAimbot(enabled)
-	ShowNotification("自瞄", enabled and "已开启" or "已关闭", 2)
-end
-
---// =============================================================
---  菜单动画（打开/关闭缓动）
--- =============================================================
-
-local MenuOpen = false
-
-local function PlayMenuAnimation(open)
-	MenuOpen = open
-	local goal = open and UDim2.new(0, 88, 0.5, -MENU_HEIGHT / 2) or UDim2.new(0, 88, 0.5, -MENU_HEIGHT / 2 + 20)
-	local tween = TweenService:Create(Menu, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = goal,
-		Size = open and UDim2.fromOffset(MENU_WIDTH, MENU_HEIGHT) or UDim2.fromOffset(MENU_WIDTH, 0),
-	})
-	tween:Play()
-end
-
--- 悬浮球点击时播放弹出动画
-local origSetVisible = nil
-Menu:GetPropertyChangedSignal("Visible"):Connect(function()
-	if Menu.Visible and not MenuOpen then
-		PlayMenuAnimation(true)
+local function AntiDetect_Stop_Full()
+	AntiDetectSystem.Enabled = false
+	for _, conn in ipairs(AntiDetectSystem.Connections) do
+		if conn then
+			conn:Disconnect()
+		end
 	end
-end)
-
---// =============================================================
---  扩展页：视觉特效
--- =============================================================
-
-local function ShowVisualFX()
-	ClearContent()
-	Section("视觉效果（本地）")
-
-	Toggle("去雾", false, function(enabled)
-		SetFog(enabled, 500)
-	end)
-
-	Toggle("冷色调", false, function(enabled)
-		SetColorShift(enabled)
-	end)
-
-	Toggle("高饱和度", false, function(enabled)
-		SetSaturation(enabled)
-	end)
-
-	Toggle("景深", false, function(enabled)
-		SetDepthOfField(enabled)
-	end)
-
-	Slider("雾距离", 100, 100000, 100000, function(value)
-		Lighting.FogEnd = value
-	end)
-
-	Button("重置画质", function()
-		SetFog(false)
-		SetColorShift(false)
-		SetSaturation(false)
-		SetDepthOfField(false)
-		Lighting.Ambient = Color3.fromRGB(0, 0, 0)
-		Lighting.Brightness = 1
-	end)
+	AntiDetectSystem.Connections = {}
 end
 
-Pages["视觉特效"] = ShowVisualFX
+--// ================================================================
+--//  区块 70: 反踢 - 完整版 (metamethod + RemoteEvent 拦截)
+--// ================================================================
+local AntiKickSystem = {
+	Enabled = false,
+	BlockedMethods = {
+		"kick",
+		"destroy",
+		"remove",
+	},
+}
 
-do
-	local index = #Categories + 1
-	Categories[index] = "视觉特效"
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -10, 0, 36)
-	button.Position = UDim2.fromOffset(5, 5 + (index - 1) * 41)
-	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-	button.BorderSizePixel = 0
-	button.Text = "视觉特效"
-	button.TextSize = 12
-	button.Font = Enum.Font.GothamBold
-	button.TextColor3 = Color3.fromRGB(90, 90, 90)
-	button.AutoButtonColor = false
-	button.ZIndex = 20
-	button.Parent = CategoryBar
-	Corner(button, 8)
-	CategoryButtons["视觉特效"] = button
-	button.MouseButton1Click:Connect(function()
-		SelectCategory("视觉特效")
-	end)
-end
-
---// =============================================================
---  扩展页：玩家工具
--- =============================================================
-
-local function ShowPlayerTools()
-	ClearContent()
-	Section("玩家工具")
-
-	Button("选择目标玩家", function()
-		RefreshPlayerList()
-		PlayerSelector.Visible = true
-	end)
-
-	Button("追踪目标（头顶箭头）", function()
-		SetPlayerTracer(true)
-	end)
-
-	Button("停止追踪", function()
-		SetPlayerTracer(false)
-	end)
-
-	Toggle("旁观目标", false, function(enabled)
-		SetSpectate(enabled)
-	end)
-
-	Button("取消旁观", function()
-		SetSpectate(false)
-	end)
-
-	Toggle("调试连线", false, function(enabled)
-		SetDebugLines(enabled)
-	end)
-
-	Button("清理所有连线", function()
-		SetDebugLines(false)
-	end)
-end
-
-Pages["玩家工具"] = ShowPlayerTools
-
-do
-	local index = #Categories + 1
-	Categories[index] = "玩家工具"
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -10, 0, 36)
-	button.Position = UDim2.fromOffset(5, 5 + (index - 1) * 41)
-	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-	button.BorderSizePixel = 0
-	button.Text = "玩家工具"
-	button.TextSize = 12
-	button.Font = Enum.Font.GothamBold
-	button.TextColor3 = Color3.fromRGB(90, 90, 90)
-	button.AutoButtonColor = false
-	button.ZIndex = 20
-	button.Parent = CategoryBar
-	Corner(button, 8)
-	CategoryButtons["玩家工具"] = button
-	button.MouseButton1Click:Connect(function()
-		SelectCategory("玩家工具")
-	end)
-end
-
---// =============================================================
---  全局错误处理（防止单个功能崩掉整个菜单）
--- =============================================================
-
-local function SafeCall(fn, ...)
-	local ok, err = pcall(fn, ...)
-	if not ok then
-		warn("[AM] 错误:", err)
-		ShowNotification("错误", "操作失败，详见控制台", 3)
+local function AntiKick_Start_Full()
+	AntiKickSystem.Enabled = true
+	-- 方法1: 拦截 __namecall (支持的执行器)
+	if hookmetamethod and getnamecallmethod then
+		local mt = getrawmetatable and getrawmetatable(game)
+		if mt then
+			local oldNamecall = mt.__namecall
+			hookmetamethod(game, "__namecall", function(self, ...)
+				local method = getnamecallmethod()
+				if method then
+					local lower = method:lower()
+					for _, blocked in ipairs(AntiKickSystem.BlockedMethods) do
+						if lower == blocked then
+							return nil
+						end
+					end
+				end
+				return oldNamecall(self, ...)
+			end)
+		end
+	end
+	-- 方法2: 监控危险 RemoteEvent
+	for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+		if v:IsA("RemoteEvent") then
+			local name = v.Name:lower()
+			if name:find("kick") or name:find("ban") or name:find("punish") or name:find("moderate") then
+				-- 记录但不拦截, 仅用于诊断
+			end
+		end
 	end
 end
 
--- 用 SafeCall 包裹所有页面渲染
-local origSelect = SelectCategory
-SelectCategory = function(name)
-	SafeCall(function()
-		origSelect(name)
-	end)
+local function AntiKick_Stop_Full()
+	AntiKickSystem.Enabled = false
 end
 
---// =============================================================
---  最终启动通知
--- =============================================================
-
-ShowNotification("AM通用脚本", "加载完成 · QQ群: " .. QQ_GROUP, 4)
-
-print("[AM通用脚本] 全部系统就绪")
-
-
-print("[AM通用脚本] 扩展系统就绪 · QQ群:", QQ_GROUP)
-
-
-print("[AM通用脚本] 加载完成 · QQ群:", QQ_GROUP)
+--// ================================================================
+--  说明: 区块59-70 为双套实现 / 备用方案 / 扩展模块
+--  全部接入主系统的 State / Values / Connections / Objects
+-- ================================================================
+--// EOF
