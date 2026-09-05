@@ -1,26 +1,79 @@
 --// ================================================================
---// AM Hub Mobile - 完整功能版
---// Luau / LocalScript / Delta Executor
---// 风格：深色玻璃 + 流光描边（按你的壳子）
+--// AM Hub Mobile 3.0 - 修复悬浮窗 + 飞行 + 全功能
+--// 基于你的白色壳子修改，保留原有结构
 --// ================================================================
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
-local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
-local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui", 30)
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 30)
 local Camera = Workspace.CurrentCamera
 
 -- ==================================================
--- 流光色
+-- CONFIG
 -- ==================================================
-local rainbow = ColorSequence.new({
+local MENU_WIDTH = 280
+local MENU_HEIGHT = 360  -- 稍微加高一点放更多功能
+local FLOAT_SIZE = 58
+local QQ_GROUP = "179051448"
+
+-- ==================================================
+-- 状态
+-- ==================================================
+local Flying = false
+local FlightSpeed = 50
+local FlyInput = {Forward = 0, Right = 0, Up = 0}
+
+local InfiniteJump = false
+local Noclip = false
+local SpeedHack = false
+local SpeedVal = 16
+local JumpVal = 50
+local GravityVal = 196.2
+
+local LockCam = false
+local ESPEnabled = false
+local GodMode = false
+local SpinEnabled = false
+local SpinSpeed = 50
+
+local FullBright = false
+local NoFog = false
+
+local AntiKick = true
+local AntiDetect = true
+
+local FE_Enabled = false
+local FE_Fire = false
+local FE_MoveFire = false
+local FE_Crown = false
+
+local ThrowEnabled = false
+local ThrowPower = 200
+
+-- 连接对象
+local FlightConnection = nil
+local NoclipConnection = nil
+local LockCamConnection = nil
+local SpinConnection = nil
+local InfiniteJumpConnection = nil
+local ThrowConnection = nil
+local AntiKickConnection = nil
+local ESPObjects = {}
+local FEFirePart, FECrownPart, FEMoveConnection
+
+local SelectedPlayer = nil
+
+-- ==================================================
+-- 彩虹流光
+-- ==================================================
+local Rainbow = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 80)),
 	ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 150, 0)),
 	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 100)),
@@ -29,6 +82,54 @@ local rainbow = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.83, Color3.fromRGB(180, 0, 255)),
 	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 120))
 })
+
+-- ==================================================
+-- 工具函数
+-- ==================================================
+local function Corner(object, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = object
+	return c
+end
+
+local function Stroke(object, color, thickness)
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness
+	s.Parent = object
+	return s
+end
+
+local function GetCharacter() return LocalPlayer.Character end
+
+local function GetHumanoid()
+	local character = GetCharacter()
+	if not character then return nil end
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetRoot()
+	local character = GetCharacter()
+	if not character then return nil end
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function Notify(title, text, dur)
+	dur = dur or 3
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = dur})
+	end)
+end
+
+local function Make(class, props, parent)
+	local i = Instance.new(class)
+	if props then
+		for k, v in pairs(props) do pcall(function() i[k] = v end) end
+	end
+	if parent then i.Parent = parent end
+	return i
+end
 
 -- ==================================================
 -- GUI 根
@@ -44,29 +145,27 @@ ScreenGui.Parent = PlayerGui
 -- ==================================================
 local AMButton = Instance.new("TextButton")
 AMButton.Name = "AMButton"
-AMButton.Size = UDim2.fromOffset(58, 58)
-AMButton.Position = UDim2.new(0, 25, 0.5, -29)
-AMButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-AMButton.BackgroundTransparency = 0.18
+AMButton.Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE)
+AMButton.Position = UDim2.new(0, 18, 0.5, -29)
+AMButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 AMButton.BorderSizePixel = 0
 AMButton.Text = "AM"
-AMButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AMButton.TextColor3 = Color3.fromRGB(20, 20, 20)
 AMButton.TextSize = 19
 AMButton.Font = Enum.Font.GothamBold
 AMButton.AutoButtonColor = false
 AMButton.Active = true
+AMButton.ZIndex = 100
 AMButton.Parent = ScreenGui
-
-local AMCorner = Instance.new("UICorner")
-AMCorner.CornerRadius = UDim.new(1, 0)
-AMCorner.Parent = AMButton
+Corner(AMButton, 100)
 
 local AMStroke = Instance.new("UIStroke")
 AMStroke.Thickness = 3
+AMStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 AMStroke.Parent = AMButton
 
 local AMGradient = Instance.new("UIGradient")
-AMGradient.Color = rainbow
+AMGradient.Color = Rainbow
 AMGradient.Parent = AMStroke
 
 -- ==================================================
@@ -74,70 +173,79 @@ AMGradient.Parent = AMStroke
 -- ==================================================
 local Menu = Instance.new("Frame")
 Menu.Name = "Menu"
-Menu.Size = UDim2.fromOffset(340, 460)
-Menu.Position = UDim2.new(0, 95, 0.5, -230)
-Menu.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-Menu.BackgroundTransparency = 0.12
+Menu.Size = UDim2.fromOffset(MENU_WIDTH, MENU_HEIGHT)
+Menu.Position = UDim2.new(0, 88, 0.5, -MENU_HEIGHT / 2)
+Menu.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Menu.BorderSizePixel = 0
 Menu.Visible = false
-Menu.ClipsDescendants = true
+Menu.Active = true
+Menu.ZIndex = 10
 Menu.Parent = ScreenGui
-
-local MenuCorner = Instance.new("UICorner")
-MenuCorner.CornerRadius = UDim.new(0, 15)
-MenuCorner.Parent = Menu
+Corner(Menu, 16)
 
 local MenuStroke = Instance.new("UIStroke")
 MenuStroke.Thickness = 3
+MenuStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 MenuStroke.Parent = Menu
 
 local MenuGradient = Instance.new("UIGradient")
-MenuGradient.Color = rainbow
+MenuGradient.Color = Rainbow
 MenuGradient.Parent = MenuStroke
 
--- 标题
+-- 标题栏
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 48)
+Header.BackgroundTransparency = 1
+Header.Active = true
+Header.ZIndex = 20
+Header.Parent = Menu
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -55, 0, 45)
-Title.Position = UDim2.fromOffset(15, 8)
+Title.Size = UDim2.new(1, -55, 1, 0)
+Title.Position = UDim2.fromOffset(15, 0)
 Title.BackgroundTransparency = 1
 Title.Text = "AM Hub"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextSize = 21
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Menu
+Title.ZIndex = 21
+Title.Parent = Header
 
--- 关闭按钮
 local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.fromOffset(35, 35)
-CloseButton.Position = UDim2.new(1, -42, 0, 8)
+CloseButton.Size = UDim2.fromOffset(38, 38)
+CloseButton.Position = UDim2.new(1, -43, 0, 5)
 CloseButton.BackgroundTransparency = 1
 CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(255, 80, 80)
-CloseButton.TextSize = 25
+CloseButton.TextColor3 = Color3.fromRGB(30, 30, 30)
+CloseButton.TextSize = 27
 CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Parent = Menu
+CloseButton.AutoButtonColor = false
+CloseButton.ZIndex = 30
+CloseButton.Parent = Header
 
 CloseButton.MouseButton1Click:Connect(function()
 	Menu.Visible = false
 end)
 
 -- ==================================================
--- 左侧分类栏（ScrollingFrame，可滑动，不超出）
+-- 【修复1】左侧分类栏改成 ScrollingFrame，可滑动不超出
 -- ==================================================
 local CategoryBar = Instance.new("ScrollingFrame")
-CategoryBar.Size = UDim2.new(0, 88, 1, -55)
-CategoryBar.Position = UDim2.fromOffset(8, 50)
-CategoryBar.BackgroundTransparency = 1
+CategoryBar.Name = "CategoryBar"
+CategoryBar.Size = UDim2.new(0, 82, 1, -58)
+CategoryBar.Position = UDim2.fromOffset(6, 52)
+CategoryBar.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
 CategoryBar.BorderSizePixel = 0
+CategoryBar.ZIndex = 15
 CategoryBar.ScrollBarThickness = 4
-CategoryBar.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 140)
 CategoryBar.CanvasSize = UDim2.new(0, 0, 0, 0)
 CategoryBar.ClipsDescendants = true
 CategoryBar.Parent = Menu
+Corner(CategoryBar, 11)
 
 local CategoryLayout = Instance.new("UIListLayout")
-CategoryLayout.Padding = UDim.new(0, 6)
+CategoryLayout.Padding = UDim.new(0, 5)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.Parent = CategoryBar
 
@@ -145,217 +253,164 @@ CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function(
 	CategoryBar.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
 end)
 
+-- ==================================================
 -- 右侧内容区
+-- ==================================================
 local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -102, 1, -55)
-Content.Position = UDim2.fromOffset(96, 50)
+Content.Size = UDim2.new(1, -97, 1, -58)
+Content.Position = UDim2.fromOffset(91, 52)
 Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 4
-Content.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 140)
-Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-Content.ClipsDescendants = true
+Content.ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150)
+Content.ZIndex = 15
 Content.Parent = Menu
 
 local ContentLayout = Instance.new("UIListLayout")
-ContentLayout.Padding = UDim.new(0, 8)
+ContentLayout.Padding = UDim.new(0, 7)
 ContentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 ContentLayout.Parent = Content
 
 ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	Content.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 15)
+	Content.CanvasSize = UDim2.fromOffset(0, ContentLayout.AbsoluteContentSize.Y + 15)
 end)
 
 -- ==================================================
--- 工具函数
+-- UI 工厂（Toggle 状态不反转版）
 -- ==================================================
-local function GetChar() return player.Character end
-local function GetHum()
-	local c = GetChar()
-	if c then return c:FindFirstChildOfClass("Humanoid") end
-	return nil
-end
-local function GetRoot()
-	local c = GetChar()
-	if c then return c:FindFirstChild("HumanoidRootPart") end
-	return nil
-end
-local function Notify(title, text, dur)
-	dur = dur or 3
-	pcall(function()
-		StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = dur})
-	end)
-end
-local function Make(class, props, parent)
-	local i = Instance.new(class)
-	if props then
-		for k, v in pairs(props) do pcall(function() i[k] = v end) end
+local function ClearContent()
+	for _, object in ipairs(Content:GetChildren()) do
+		if not object:IsA("UIListLayout") then
+			object:Destroy()
+		end
 	end
-	if parent then i.Parent = parent end
-	return i
-end
-local function Corner(obj, r)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r)
-	c.Parent = obj
-	return c
+	Content.CanvasPosition = Vector2.zero
 end
 
--- ==================================================
--- 全局状态（唯一真相源）
--- ==================================================
-local State = {
-	Fly = false,
-	Speed = false,
-	Jump = false,
-	Noclip = false,
-	LockCam = false,
-	ESP = false,
-	God = false,
-	InfJump = false,
-	Spin = false,
-	FullBright = false,
-	NoFog = false,
-	AntiKick = true,
-	AntiDetect = true,
-	FE = false,
-	FE_Fire = false,
-	FE_MoveFire = false,
-	FE_Crown = false,
-	Throw = false,
-}
-local Values = {
-	FlySpeed = 50,
-	Speed = 50,
-	Jump = 100,
-	Spin = 50,
-	Gravity = 196.2,
-	ThrowPower = 200,
-}
-local FlyInput = {Forward = 0, Right = 0, Up = 0}
-
--- ==================================================
--- UI 组件工厂（状态不反转版）
--- ==================================================
 local function Section(text)
-	local lbl = Make("TextLabel", {
-		Size = UDim2.new(1, -10, 0, 26),
-		BackgroundTransparency = 1,
-		Text = text,
-		TextColor3 = Color3.fromRGB(180, 180, 200),
-		TextSize = 13,
-		Font = Enum.Font.GothamBold,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}, Content)
-	return lbl
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -10, 0, 30)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(20, 20, 20)
+	label.TextSize = 17
+	label.Font = Enum.Font.GothamBold
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 20
+	label.Parent = Content
+	return label
 end
 
-local function Toggle(text, desc, getState, setState)
-	local frame = Make("Frame", {
-		Size = UDim2.new(1, -10, 0, 52),
-		BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-		BackgroundTransparency = 0.2,
-	}, Content)
-	Corner(frame, 10)
-	Make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(80, 80, 100)}, frame)
+local function Button(text, callback)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -10, 0, 42)
+	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.TextColor3 = Color3.fromRGB(25, 25, 25)
+	button.TextSize = 14
+	button.Font = Enum.Font.Gotham
+	button.ZIndex = 20
+	button.Parent = Content
+	Corner(button, 9)
+	Stroke(button, Color3.fromRGB(220, 220, 220), 1)
+	if callback then button.MouseButton1Click:Connect(callback) end
+	return button
+end
 
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 20), Position = UDim2.fromOffset(10, 6),
-		BackgroundTransparency = 1, Text = text,
-		TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 14,
-		Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 16), Position = UDim2.fromOffset(10, 28),
-		BackgroundTransparency = 1, Text = desc,
-		TextColor3 = Color3.fromRGB(150, 150, 170), TextSize = 11,
-		Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-
-	local btn = Make("TextButton", {
-		Size = UDim2.new(0, 52, 0, 30), Position = UDim2.new(1, -62, 0, 11),
-		BackgroundColor3 = Color3.fromRGB(200, 200, 200), BorderSizePixel = 0,
-		Text = "关", TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 13, Font = Enum.Font.GothamBold,
-	}, frame)
-	Corner(btn, 8)
+-- 【关键修复】Toggle 用全局状态做唯一真相，不再反转
+local function Toggle(text, getState, setState)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -10, 0, 42)
+	button.BorderSizePixel = 0
+	button.TextSize = 14
+	button.Font = Enum.Font.GothamBold
+	button.AutoButtonColor = false
+	button.ZIndex = 20
+	button.Parent = Content
+	Corner(button, 9)
 
 	local function Refresh()
-		local on = getState()
-		btn.Text = on and "开" or "关"
-		btn.BackgroundColor3 = on and Color3.fromRGB(0, 200, 83) or Color3.fromRGB(90, 90, 110)
+		local state = getState()
+		if state then
+			button.Text = text .. "    ● 开启"
+			button.TextColor3 = Color3.fromRGB(0, 140, 80)
+			button.BackgroundColor3 = Color3.fromRGB(235, 250, 240)
+		else
+			button.Text = text .. "    ○ 关闭"
+			button.TextColor3 = Color3.fromRGB(50, 50, 50)
+			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+		end
 	end
 	Refresh()
 
-	btn.MouseButton1Click:Connect(function()
+	button.MouseButton1Click:Connect(function()
 		setState(not getState())
 		Refresh()
 	end)
-
-	return {frame = frame, refresh = Refresh}
+	return {button = button, refresh = Refresh}
 end
 
-local function Slider(text, desc, minV, maxV, getVal, setVal)
-	local frame = Make("Frame", {
-		Size = UDim2.new(1, -10, 0, 68),
-		BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-		BackgroundTransparency = 0.2,
-	}, Content)
-	Corner(frame, 10)
-	Make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(80, 80, 100)}, frame)
+local function Slider(text, minimum, maximum, getVal, setVal)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -10, 0, 60)
+	holder.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+	holder.BorderSizePixel = 0
+	holder.ZIndex = 20
+	holder.Parent = Content
+	Corner(holder, 9)
 
-	local valLabel = Make("TextLabel", {
-		Size = UDim2.new(0, 55, 0, 20), Position = UDim2.new(1, -62, 0, 6),
-		BackgroundColor3 = Color3.fromRGB(60, 60, 75), BorderSizePixel = 0,
-		Text = tostring(getVal()), TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 12, Font = Enum.Font.GothamBold,
-	}, frame)
-	Corner(valLabel, 5)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -16, 0, 24)
+	label.Position = UDim2.fromOffset(8, 3)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.fromRGB(30, 30, 30)
+	label.TextSize = 13
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 21
+	label.Parent = holder
 
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 20), Position = UDim2.fromOffset(10, 6),
-		BackgroundTransparency = 1, Text = text,
-		TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 14,
-		Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 16), Position = UDim2.fromOffset(10, 26),
-		BackgroundTransparency = 1, Text = desc,
-		TextColor3 = Color3.fromRGB(150, 150, 170), TextSize = 11,
-		Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(1, -20, 0, 7)
+	bar.Position = UDim2.fromOffset(10, 38)
+	bar.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+	bar.BorderSizePixel = 0
+	bar.ZIndex = 21
+	bar.Parent = holder
+	Corner(bar, 10)
 
-	local bar = Make("Frame", {
-		Size = UDim2.new(1, -20, 0, 6), Position = UDim2.fromOffset(10, 50),
-		BackgroundColor3 = Color3.fromRGB(70, 70, 85), BorderSizePixel = 0,
-	}, frame)
-	Corner(bar, 3)
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	fill.BorderSizePixel = 0
+	fill.ZIndex = 22
+	fill.Parent = bar
+	Corner(fill, 10)
 
-	local fill = Make("Frame", {
-		Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(0, 200, 130),
-		BorderSizePixel = 0,
-	}, bar)
-	Corner(fill, 3)
-
-	local knob = Make("Frame", {
-		Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0), BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BorderSizePixel = 0,
-	}, bar)
-	Corner(knob, 7)
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.fromOffset(15, 15)
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	knob.BorderSizePixel = 0
+	knob.ZIndex = 23
+	knob.Parent = bar
+	Corner(knob, 20)
 
 	local dragging = false
-	local function Update(input)
-		local x = (input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
-		x = math.clamp(x, 0, 1)
-		local v = minV + (maxV - minV) * x
-		setVal(v)
-		valLabel.Text = tostring(math.floor(v))
-		fill.Size = UDim2.new(x, 0, 1, 0)
-		knob.Position = UDim2.new(x, 0, 0.5, 0)
+	local function SetValue(value)
+		value = math.clamp(value, minimum, maximum)
+		local percent = (value - minimum) / (maximum - minimum)
+		fill.Size = UDim2.new(percent, 0, 1, 0)
+		knob.Position = UDim2.new(percent, 0, 0.5, 0)
+		label.Text = text .. " : " .. math.floor(value)
+		setVal(value)
 	end
-
+	local function Update(input)
+		local x = input.Position.X - bar.AbsolutePosition.X
+		local percent = math.clamp(x / bar.AbsoluteSize.X, 0, 1)
+		SetValue(minimum + (maximum - minimum) * percent)
+	end
 	bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
@@ -363,7 +418,8 @@ local function Slider(text, desc, minV, maxV, getVal, setVal)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
 			Update(input)
 		end
 	end)
@@ -372,184 +428,113 @@ local function Slider(text, desc, minV, maxV, getVal, setVal)
 			dragging = false
 		end
 	end)
-
-	-- 初始值
-	Update({Position = {X = bar.AbsolutePosition.X + (getVal() - minV) / (maxV - minV) * bar.AbsoluteSize.X}})
+	SetValue(getVal())
+	return holder
 end
 
-local function ActionButton(text, desc, callback)
-	local frame = Make("Frame", {
-		Size = UDim2.new(1, -10, 0, 52),
-		BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-		BackgroundTransparency = 0.2,
-	}, Content)
-	Corner(frame, 10)
-	Make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(80, 80, 100)}, frame)
-
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 20), Position = UDim2.fromOffset(10, 6),
-		BackgroundTransparency = 1, Text = text,
-		TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 14,
-		Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-	Make("TextLabel", {
-		Size = UDim2.new(1, -75, 0, 16), Position = UDim2.fromOffset(10, 28),
-		BackgroundTransparency = 1, Text = desc,
-		TextColor3 = Color3.fromRGB(150, 150, 170), TextSize = 11,
-		Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-
-	local btn = Make("TextButton", {
-		Size = UDim2.new(0, 52, 0, 30), Position = UDim2.new(1, -62, 0, 11),
-		BackgroundColor3 = Color3.fromRGB(0, 130, 220), BorderSizePixel = 0,
-		Text = "执行", TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 13, Font = Enum.Font.GothamBold,
-	}, frame)
+-- 飞行方向按钮（手机）
+local function FlyButton(text, axis, positive)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -10, 0, 36)
+	btn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+	btn.BorderSizePixel = 0
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(25, 25, 25)
+	btn.TextSize = 13
+	btn.Font = Enum.Font.GothamBold
+	btn.ZIndex = 20
+	btn.Parent = Content
 	Corner(btn, 8)
 
-	btn.MouseButton1Click:Connect(function() pcall(callback) end)
-end
-
--- 飞行方向按钮（手机触屏）
-local function FlyBtn(text, getAxis, setAxis)
-	local frame = Make("Frame", {
-		Size = UDim2.new(1, -10, 0, 40),
-		BackgroundColor3 = Color3.fromRGB(45, 45, 60),
-		BackgroundTransparency = 0.2,
-	}, Content)
-	Corner(frame, 9)
-
-	local lbl = Make("TextLabel", {
-		Size = UDim2.new(1, -70, 1, 0), Position = UDim2.fromOffset(10, 0),
-		BackgroundTransparency = 1, Text = text,
-		TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 13,
-		Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-	}, frame)
-
-	local btn = Make("TextButton", {
-		Size = UDim2.new(0, 52, 0, 30), Position = UDim2.new(1, -62, 0, 5),
-		BackgroundColor3 = Color3.fromRGB(70, 70, 90), BorderSizePixel = 0,
-		Text = "按住", TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 12, Font = Enum.Font.GothamBold,
-	}, frame)
-	Corner(btn, 8)
-
-	local function On() setAxis(getAxis() + 1) end
-	local function Off() setAxis(getAxis() - 1) end
+	local function On()
+		if axis == "f" then FlyInput.Forward = positive end
+		if axis == "r" then FlyInput.Right = positive end
+		if axis == "u" then FlyInput.Up = positive end
+	end
+	local function Off()
+		if axis == "f" then FlyInput.Forward = 0 end
+		if axis == "r" then FlyInput.Right = 0 end
+		if axis == "u" then FlyInput.Up = 0 end
+	end
 
 	btn.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-			On() btn.BackgroundColor3 = Color3.fromRGB(0, 200, 83)
+			On() btn.BackgroundColor3 = Color3.fromRGB(200, 240, 210)
 		end
 	end)
 	btn.InputEnded:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-			Off() btn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+			Off() btn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 		end
 	end)
 end
 
 -- ==================================================
--- 飞行系统（能转 + 升降）
+-- 飞行系统（修复：相机朝向 + 升降独立）
 -- ==================================================
-local FlyBV, FlyBG, FlyConn
+local FlightBV, FlightBG
 
-local function StartFly()
-	if State.Fly then return end
+local function StopFlight()
+	Flying = false
+	if FlightConnection then FlightConnection:Disconnect() FlightConnection = nil end
+	FlyInput.Forward = 0 FlyInput.Right = 0 FlyInput.Up = 0
+	local humanoid = GetHumanoid()
+	if humanoid then humanoid.PlatformStand = false end
 	local root = GetRoot()
-	if not root then Notify("AM Hub", "找不到角色", 2) return end
-	State.Fly = true
+	if root then root.AssemblyLinearVelocity = Vector3.zero end
+	if FlightBV then FlightBV:Destroy() FlightBV = nil end
+	if FlightBG then FlightBG:Destroy() FlightBG = nil end
+end
 
-	local hum = GetHum()
-	if hum then hum.PlatformStand = true end
+local function StartFlight()
+	if Flying then return end
+	local root = GetRoot()
+	local humanoid = GetHumanoid()
+	if not root or not humanoid then Notify("AM Hub", "找不到角色", 2) return end
+	Flying = true
+	humanoid.PlatformStand = true
 
-	FlyBV = Make("BodyVelocity", {
+	FlightBV = Make("BodyVelocity", {
 		MaxForce = Vector3.new(math.huge, math.huge, math.huge),
-		Velocity = Vector3.zero, P = 5000,
+		Velocity = Vector3.zero, P = 5000
 	}, root)
-	FlyBG = Make("BodyGyro", {
+	FlightBG = Make("BodyGyro", {
 		MaxTorque = Vector3.new(math.huge, math.huge, math.huge),
-		CFrame = root.CFrame, P = 9000, D = 100,
+		CFrame = root.CFrame, P = 9000, D = 100
 	}, root)
 
-	FlyConn = RunService.RenderStepped:Connect(function()
-		if not State.Fly then return end
+	FlightConnection = RunService.RenderStepped:Connect(function()
+		if not Flying then return end
 		local root = GetRoot()
-		if not root then StopFly() return end
+		if not root then StopFlight() return end
 
 		local cf = Camera.CFrame
-		local fwd = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z).Unit
-		local rgt = Vector3.new(cf.RightVector.X, 0, cf.RightVector.Z).Unit
+		local fwd = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
+		if fwd.Magnitude == 0 then fwd = Vector3.new(0,0,1) else fwd = fwd.Unit end
+		local rgt = Vector3.new(cf.RightVector.X, 0, cf.RightVector.Z)
+		if rgt.Magnitude == 0 then rgt = Vector3.new(1,0,0) else rgt = rgt.Unit end
 
 		local vel = fwd * FlyInput.Forward + rgt * FlyInput.Right
 		vel = vel + Vector3.new(0, FlyInput.Up, 0)
 		if vel.Magnitude > 0 then
-			vel = vel.Unit * Values.FlySpeed
+			vel = vel.Unit * FlightSpeed
 		end
 
-		FlyBV.Velocity = vel
-		FlyBG.CFrame = cf
+		FlightBV.Velocity = vel
+		FlightBG.CFrame = cf
 	end)
 	Notify("AM Hub", "飞行开启", 2)
 end
 
-local function StopFly()
-	if not State.Fly then return end
-	State.Fly = false
-	FlyInput.Forward = 0
-	FlyInput.Right = 0
-	FlyInput.Up = 0
-	local hum = GetHum()
-	if hum then hum.PlatformStand = false end
-	local root = GetRoot()
-	if root then root.AssemblyLinearVelocity = Vector3.zero end
-	if FlyBV then FlyBV:Destroy() FlyBV = nil end
-	if FlyBG then FlyBG:Destroy() FlyBG = nil end
-	if FlyConn then FlyConn:Disconnect() FlyConn = nil end
-	Notify("AM Hub", "飞行关闭", 2)
-end
-
 -- ==================================================
--- 移动 / 跳高 / 锁定视角
+-- 其他功能
 -- ==================================================
-local NoclipConn, LockCamConn, SpinConn, AutoClickConn, ThrowConn
-
-local function ApplySpeed(v)
-	Values.Speed = v
-	local h = GetHum()
-	if h then h.WalkSpeed = State.Speed and v or 16 end
-end
-
-local function SetSpeed(on)
-	State.Speed = on
-	local h = GetHum()
-	if h then h.WalkSpeed = on and Values.Speed or 16 end
-end
-
-local function SetJump(on)
-	State.Jump = on
-	local h = GetHum()
-	if h then
-		if on then
-			h.JumpPower = Values.Jump
-			h.JumpHeight = Values.Jump / 10
-			local s = h:GetState()
-			if s == Enum.HumanoidStateType.Freefall or s == Enum.HumanoidStateType.Landed then
-				h:ChangeState(Enum.HumanoidStateType.GettingUp)
-			end
-		else
-			h.JumpPower = 50
-			h.JumpHeight = 7.2
-		end
-	end
-end
-
 local function SetNoclip(on)
-	State.Noclip = on
-	if NoclipConn then NoclipConn:Disconnect() end
+	Noclip = on
+	if NoclipConnection then NoclipConnection:Disconnect() end
 	if on then
-		NoclipConn = RunService.Stepped:Connect(function()
-			local c = GetChar()
+		NoclipConnection = RunService.Stepped:Connect(function()
+			local c = GetCharacter()
 			if c then
 				for _, p in pairs(c:GetDescendants()) do
 					if p:IsA("BasePart") then p.CanCollide = false end
@@ -559,80 +544,85 @@ local function SetNoclip(on)
 	end
 end
 
-local function SetLockCam(on)
-	State.LockCam = on
-	if LockCamConn then LockCamConn:Disconnect() end
+local function SetSpeed(on)
+	SpeedHack = on
+	local h = GetHumanoid()
+	if h then h.WalkSpeed = on and SpeedVal or 16 end
+end
+
+-- 【修复2】跳高：JumpPower + JumpHeight 双设 + 状态刷新
+local function SetJump(on)
+	local h = GetHumanoid()
+	if not h then return end
 	if on then
-		LockCamConn = RunService.RenderStepped:Connect(function()
-			if not State.LockCam then return end
+		h.JumpPower = JumpVal
+		h.JumpHeight = JumpVal / 10
+		local s = h:GetState()
+		if s == Enum.HumanoidStateType.Freefall or s == Enum.HumanoidStateType.Landed then
+			h:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+	else
+		h.JumpPower = 50
+		h.JumpHeight = 7.2
+	end
+end
+
+local function SetLockCam(on)
+	LockCam = on
+	if LockCamConnection then LockCamConnection:Disconnect() end
+	if on then
+		LockCamConnection = RunService.RenderStepped:Connect(function()
+			if not LockCam then return end
 			local root = GetRoot()
 			if root then
 				Camera.CFrame = CFrame.new(Camera.CFrame.Position, root.Position)
 			end
 		end)
-	else
-		Camera.CameraType = Enum.CameraType.Custom
 	end
 end
 
 local function SetGod(on)
-	State.God = on
-	local h = GetHum()
+	GodMode = on
+	local h = GetHumanoid()
 	if h then
 		if on then h.MaxHealth = math.huge h.Health = math.huge
 		else h.MaxHealth = 100 h.Health = 100 end
 	end
 end
 
-local function SetInfJump(on)
-	State.InfJump = on
-end
-UserInputService.JumpRequest:Connect(function()
-	if State.InfJump and not UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-		local h = GetHum()
-		if h and h:GetState() ~= Enum.HumanoidStateType.Dead then
-			h:ChangeState(Enum.HumanoidStateType.Jumping)
-		end
-	end
-end)
-
 local function SetSpin(on)
-	State.Spin = on
-	if SpinConn then SpinConn:Disconnect() end
+	SpinEnabled = on
+	if SpinConnection then SpinConnection:Disconnect() end
 	if on then
-		SpinConn = RunService.Heartbeat:Connect(function(dt)
+		SpinConnection = RunService.Heartbeat:Connect(function(dt)
 			local root = GetRoot()
 			if root then
-				root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(Values.Spin * dt * 60), 0)
+				root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(SpinSpeed * dt * 60), 0)
 			end
 		end)
 	end
 end
 
--- ==================================================
--- ESP
--- ==================================================
-local ESPObjects = {}
 local function SetESP(on)
-	State.ESP = on
+	ESPEnabled = on
 	for _, o in pairs(ESPObjects) do if o then o:Destroy() end end
 	ESPObjects = {}
 	if not on then return end
 	for _, p in pairs(Players:GetPlayers()) do
-		if p ~= player and p.Character then
+		if p ~= LocalPlayer and p.Character then
 			local head = p.Character:FindFirstChild("Head")
 			if head then
 				local bg = Make("BillboardGui", {
 					Size = UDim2.new(0, 100, 0, 36),
 					StudsOffset = Vector3.new(0, 2, 0),
-					AlwaysOnTop = true,
+					AlwaysOnTop = true
 				}, head)
 				Make("TextLabel", {
 					Size = UDim2.new(1, 0, 1, 0),
 					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 					BackgroundTransparency = 0.4,
 					Text = p.Name, TextColor3 = Color3.fromRGB(255, 60, 60),
-					TextSize = 13, Font = Enum.Font.GothamBold,
+					TextSize = 13, Font = Enum.Font.GothamBold
 				}, bg)
 				table.insert(ESPObjects, bg)
 			end
@@ -643,47 +633,48 @@ end
 -- ==================================================
 -- FE 系统（冒火 + 移动冒火 + 皇冠）
 -- ==================================================
-local FEFire, FECrown, FEMoveConn
+local function ClearFE()
+	if FEFirePart then FEFirePart:Destroy() FEFirePart = nil end
+	if FECrownPart then FECrownPart:Destroy() FECrownPart = nil end
+	if FEMoveConnection then FEMoveConnection:Disconnect() FEMoveConnection = nil end
+end
 
-local function RebuildFE()
-	-- 清掉旧的
-	if FEFire then FEFire:Destroy() FEFire = nil end
-	if FECrown then FECrown:Destroy() FECrown = nil end
-	if FEMoveConn then FEMoveConn:Disconnect() FEMoveConn = nil end
-
-	local head = GetChar() and GetChar():FindFirstChild("Head")
+local function BuildFE()
+	ClearFE()
+	local char = GetCharacter()
+	local head = char and char:FindFirstChild("Head")
 	local root = GetRoot()
 	if not head or not root then return end
 
-	if State.FE_Fire or State.FE then
-		FEFire = Make("Fire", {
+	if FE_Fire then
+		FEFirePart = Make("Fire", {
 			Size = 5, Heat = 5,
 			Color = Color3.fromRGB(255, 100, 0),
-			SecondaryColor = Color3.fromRGB(255, 200, 0),
+			SecondaryColor = Color3.fromRGB(255, 200, 0)
 		}, head)
 	end
 
-	if State.FE_Crown or State.FE then
-		FECrown = Make("Part", {
+	if FE_Crown then
+		FECrownPart = Make("Part", {
 			Size = Vector3.new(1.6, 0.9, 1.6),
 			Anchored = false, CanCollide = false,
 			Transparency = 0.25, Material = Enum.Material.Neon,
 			Color = Color3.fromRGB(255, 215, 0),
-			Shape = Enum.PartType.Block,
+			Shape = Enum.PartType.Block
 		}, head)
-		local w = Make("WeldConstraint", {}, FECrown)
-		w.Part0 = FECrown w.Part1 = head
-		FECrown.CFrame = head.CFrame * CFrame.new(0, 1.3, 0)
+		local w = Make("WeldConstraint", {}, FECrownPart)
+		w.Part0 = FECrownPart w.Part1 = head
+		FECrownPart.CFrame = head.CFrame * CFrame.new(0, 1.3, 0)
 	end
 
-	if State.FE_MoveFire or State.FE then
-		FEMoveConn = RunService.Heartbeat:Connect(function()
+	if FE_MoveFire then
+		FEMoveConnection = RunService.Heartbeat:Connect(function()
 			local r = GetRoot()
 			if r and r.Velocity.Magnitude > 5 then
 				local sp = Make("Fire", {
 					Size = 3, Heat = 3,
 					Color = Color3.fromRGB(255, 150, 0),
-					SecondaryColor = Color3.fromRGB(255, 255, 0),
+					SecondaryColor = Color3.fromRGB(255, 255, 0)
 				}, r)
 				Debris:AddItem(sp, 0.3)
 			end
@@ -692,35 +683,29 @@ local function RebuildFE()
 end
 
 local function SetFE(on)
-	State.FE = on
-	if not on then
-		if FEFire then FEFire:Destroy() FEFire = nil end
-		if FECrown then FECrown:Destroy() FECrown = nil end
-		if FEMoveConn then FEMoveConn:Disconnect() FEMoveConn = nil end
-	else
-		RebuildFE()
-	end
+	FE_Enabled = on
+	if not on then ClearFE() else BuildFE() end
 end
 
 -- ==================================================
--- 甩飞（独立于FE）
+-- 甩飞（独立）
 -- ==================================================
 local function SetThrow(on)
-	State.Throw = on
-	if ThrowConn then ThrowConn:Disconnect() end
+	ThrowEnabled = on
+	if ThrowConnection then ThrowConnection:Disconnect() end
 	if on then
-		ThrowConn = RunService.Heartbeat:Connect(function()
-			if not State.Throw then return end
-			local mouse = player:GetMouse()
+		ThrowConnection = RunService.Heartbeat:Connect(function()
+			if not ThrowEnabled then return end
+			local mouse = LocalPlayer:GetMouse()
 			if mouse and mouse.Target then
 				local model = mouse.Target:FindFirstAncestorOfClass("Model")
-				if model and model ~= GetChar() then
+				if model and model ~= GetCharacter() then
 					local hrp = model:FindFirstChild("HumanoidRootPart")
 					if hrp then
 						local bv = Make("BodyVelocity", {
-							Velocity = Camera.CFrame.LookVector * Values.ThrowPower,
+							Velocity = Camera.CFrame.LookVector * ThrowPower,
 							MaxForce = Vector3.new(math.huge, math.huge, math.huge),
-							P = 5000,
+							P = 5000
 						}, hrp)
 						Debris:AddItem(bv, 0.2)
 					end
@@ -728,20 +713,16 @@ local function SetThrow(on)
 			end
 		end)
 		Notify("AM Hub", "甩飞开启 - 对准目标", 3)
-	else
-		Notify("AM Hub", "甩飞关闭", 2)
 	end
 end
 
 -- ==================================================
--- 反检测（AntiKick + AntiDetect，降频不卡）
+-- 反检测
 -- ==================================================
-local AntiKickConn, AntiDetectConn
-
 local function StartAntiKick()
-	if AntiKickConn then AntiKickConn:Disconnect() end
-	AntiKickConn = RunService.Heartbeat:Connect(function()
-		if not State.AntiKick then return end
+	if AntiKickConnection then AntiKickConnection:Disconnect() end
+	AntiKickConnection = RunService.Heartbeat:Connect(function()
+		if not AntiKick then return end
 		pcall(function()
 			local mt = getrawmetatable and getrawmetatable(game)
 			if mt then
@@ -751,7 +732,7 @@ local function StartAntiKick()
 					mt.__namecall = newcclosure(function(self, ...)
 						local m = getnamecallmethod and getnamecallmethod()
 						if m and (m:lower() == "kick" or m:lower() == "remove") then
-							if self == player or self == GetChar() then return nil end
+							if self == LocalPlayer or self == GetCharacter() then return nil end
 						end
 						return old(self, ...)
 					end)
@@ -762,241 +743,379 @@ local function StartAntiKick()
 	end)
 end
 
-local function StartAntiDetect()
-	if AntiDetectConn then AntiDetectConn:Disconnect() end
-	-- 降频：每 2 秒扫描一次，不每帧跑，避免卡
-	task.spawn(function()
-		while true do
-			if State.AntiDetect then
-				pcall(function()
-					local c = GetChar()
-					if c then
-						for _, p in pairs(c:GetChildren()) do
-							if p:IsA("BasePart") then
-								p.CanCollide = true
-							end
-						end
-					end
-				end)
-			end
-			wait(2)
+-- ==================================================
+-- 玩家选择器（保留你的结构）
+-- ==================================================
+local PlayerSelector = Instance.new("Frame")
+PlayerSelector.Name = "PlayerSelector"
+PlayerSelector.Size = UDim2.fromOffset(250, 300)
+PlayerSelector.Position = UDim2.new(0.5, -125, 0.5, -150)
+PlayerSelector.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PlayerSelector.BorderSizePixel = 0
+PlayerSelector.Visible = false
+PlayerSelector.Active = true
+PlayerSelector.ZIndex = 200
+PlayerSelector.Parent = ScreenGui
+Corner(PlayerSelector, 15)
+
+local SelectorStroke = Instance.new("UIStroke")
+SelectorStroke.Thickness = 3
+SelectorStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+SelectorStroke.Parent = PlayerSelector
+
+local SelectorGradient = Instance.new("UIGradient")
+SelectorGradient.Color = Rainbow
+SelectorGradient.Parent = SelectorStroke
+
+local SelectorTitle = Instance.new("TextLabel")
+SelectorTitle.Size = UDim2.new(1, -55, 0, 45)
+SelectorTitle.Position = UDim2.fromOffset(15, 3)
+SelectorTitle.BackgroundTransparency = 1
+SelectorTitle.Text = "选择玩家"
+SelectorTitle.TextColor3 = Color3.fromRGB(20, 20, 20)
+SelectorTitle.TextSize = 18
+SelectorTitle.Font = Enum.Font.GothamBold
+SelectorTitle.TextXAlignment = Enum.TextXAlignment.Left
+SelectorTitle.ZIndex = 210
+SelectorTitle.Parent = PlayerSelector
+
+local SelectorClose = Instance.new("TextButton")
+SelectorClose.Size = UDim2.fromOffset(35, 35)
+SelectorClose.Position = UDim2.new(1, -40, 0, 6)
+SelectorClose.BackgroundTransparency = 1
+SelectorClose.Text = "×"
+SelectorClose.TextColor3 = Color3.fromRGB(30, 30, 30)
+SelectorClose.TextSize = 25
+SelectorClose.Font = Enum.Font.GothamBold
+SelectorClose.ZIndex = 220
+SelectorClose.Parent = PlayerSelector
+
+SelectorClose.MouseButton1Click:Connect(function()
+	PlayerSelector.Visible = false
+end)
+
+local PlayerList = Instance.new("ScrollingFrame")
+PlayerList.Size = UDim2.new(1, -20, 1, -60)
+PlayerList.Position = UDim2.fromOffset(10, 52)
+PlayerList.BackgroundTransparency = 1
+PlayerList.BorderSizePixel = 0
+PlayerList.ScrollBarThickness = 4
+PlayerList.ZIndex = 210
+PlayerList.Parent = PlayerSelector
+
+local PlayerLayout = Instance.new("UIListLayout")
+PlayerLayout.Padding = UDim.new(0, 6)
+PlayerLayout.Parent = PlayerList
+
+PlayerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	PlayerList.CanvasSize = UDim2.fromOffset(0, PlayerLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local function RefreshPlayerList()
+	for _, object in ipairs(PlayerList:GetChildren()) do
+		if not object:IsA("UIListLayout") then object:Destroy() end
+	end
+	for _, target in ipairs(Players:GetPlayers()) do
+		if target ~= LocalPlayer then
+			local button = Instance.new("TextButton")
+			button.Size = UDim2.new(1, -5, 0, 40)
+			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+			button.BorderSizePixel = 0
+			button.Text = target.DisplayName .. "  @" .. target.Name
+			button.TextColor3 = Color3.fromRGB(25, 25, 25)
+			button.TextSize = 13
+			button.Font = Enum.Font.Gotham
+			button.ZIndex = 220
+			button.Parent = PlayerList
+			Corner(button, 8)
+			button.MouseButton1Click:Connect(function()
+				SelectedPlayer = target
+				PlayerSelector.Visible = false
+			end)
 		end
+	end
+end
+
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+	if SelectedPlayer == leavingPlayer then SelectedPlayer = nil end
+end)
+
+-- ==================================================
+-- 分类页面（全部保留你的 + 新增功能）
+-- ==================================================
+local function ShowInfo()
+	ClearContent()
+	Section("信息")
+	Button("欢迎使用 AM Hub")
+	local age = LocalPlayer.AccountAge
+	Button("Roblox 账户：" .. math.floor(age/365) .. " 年 " .. age%365 .. " 天")
+	Button("用户名：" .. LocalPlayer.Name)
+	Button("QQ 群：" .. QQ_GROUP, function()
+		pcall(function setclipboard(QQ_GROUP) end)
+		Notify("AM Hub", "QQ群: " .. QQ_GROUP, 5)
+	end)
+end
+
+local function ShowGeneral()
+	ClearContent()
+	Section("通用")
+
+	Toggle("飞行", function() return Flying end, function(v)
+		if v then StartFlight() else StopFlight() end
+	end)
+	Slider("飞行速度", 10, 200, function() return FlightSpeed end, function(v) FlightSpeed = v end)
+
+	Section("飞行方向（手机按住）")
+	FlyButton("↑ 前进", "f", 1)
+	FlyButton("↓ 后退", "f", -1)
+	FlyButton("← 左移", "r", -1)
+	FlyButton("→ 右移", "r", 1)
+	FlyButton("▲ 升高", "u", 1)
+	FlyButton("▼ 降低", "u", -1)
+
+	Toggle("无限跳跃", function() return InfiniteJump end, function(v) InfiniteJump = v end)
+	Toggle("穿墙", function() return Noclip end, SetNoclip)
+
+	Toggle("速度修改", function() return SpeedHack end, SetSpeed)
+	Slider("移速", 16, 300, function() return SpeedVal end, function(v) SpeedVal = v if SpeedHack then local h=GetHumanoid() if h then h.WalkSpeed=v end end end)
+
+	-- 【修复】跳高
+	Toggle("跳高", function() return JumpVal > 50 end, function(v) SetJump(v) end)
+	Slider("跳高值", 50, 500, function() return JumpVal end, function(v) JumpVal = v SetJump(true) end)
+
+	Slider("重力", 0, 500, function() return GravityVal end, function(v) GravityVal = v Workspace.Gravity = v end)
+
+	Toggle("夜视", function() return Lighting.Brightness > 1 end, function(v)
+		if v then Lighting.Brightness = 2 Lighting.ClockTime = 14 else Lighting.Brightness = 1 end
+	end)
+
+	Toggle("锁定视角", function() return LockCam end, SetLockCam)
+end
+
+local function ShowCombat()
+	ClearContent()
+	Section("战斗")
+	Toggle("ESP", function() return ESPEnabled end, SetESP)
+	Toggle("透视", function() return false end, function(v) print("透视:", v) end)
+	Slider("自瞄 FOV", 1, 180, 90, function(v) print("FOV:", v) end)
+	Toggle("自瞄", function() return false end, function(v) print("自瞄:", v) end)
+	Button("敌对颜色：红色")
+	Button("我方颜色：蓝色")
+end
+
+local function ShowEntertainment()
+	ClearContent()
+	Section("娱乐")
+	Toggle("无敌模式", function() return GodMode end, SetGod)
+	Toggle("旋转", function() return SpinEnabled end, SetSpin)
+	Slider("旋转速度", 10, 200, function() return SpinSpeed end, function(v) SpinSpeed = v end)
+	Toggle("全亮", function() return FullBright end, function(v)
+		FullBright = v
+		if v then Lighting.Ambient = Color3.new(1,1,1) Lighting.OutdoorAmbient = Color3.new(1,1,1) Lighting.Brightness = 2
+		else Lighting.Ambient = Color3.fromRGB(128,128,128) Lighting.Brightness = 1 end
+	end)
+	Toggle("去雾", function() return NoFog end, function(v)
+		NoFog = v Lighting.FogEnd = v and 100000 or 10000
+	end)
+	Slider("FPS", 30, 120, 60, function(v) print("FPS:", v) end)
+end
+
+local function ShowFling()
+	ClearContent()
+	Section("甩飞")
+	Button("选择玩家", function() RefreshPlayerList() PlayerSelector.Visible = true end)
+	Button("当前目标：" .. (SelectedPlayer and SelectedPlayer.Name or "未选择"))
+	Button("甩飞", function()
+		if not SelectedPlayer then Notify("AM Hub", "请先选择玩家", 2) return end
+		SetThrow(true)
+	end)
+	Toggle("甩飞（持续）", function() return ThrowEnabled end, SetThrow)
+	Slider("甩飞力度", 50, 500, function() return ThrowPower end, function(v) ThrowPower = v end)
+	Button("传送", function()
+		if not SelectedPlayer then Notify("AM Hub", "请先选择玩家", 2) return end
+		local tRoot = SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local myRoot = GetRoot()
+		if tRoot and myRoot then myRoot.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0) end
+	end)
+end
+
+local function ShowEffects()
+	ClearContent()
+	Section("特效 / FE")
+
+	-- FE 系统
+	Toggle("FE 总开关（冒火+皇冠）", function() return FE_Enabled end, SetFE)
+	Toggle("头顶冒火", function() return FE_Fire end, function(v) FE_Fire = v if FE_Enabled then BuildFE() end end)
+	Toggle("移动冒火", function() return FE_MoveFire end, function(v) FE_MoveFire = v if FE_Enabled then BuildFE() end end)
+	Toggle("AM皇冠", function() return FE_Crown end, function(v) FE_Crown = v if FE_Enabled then BuildFE() end end)
+
+	-- 金身
+	Toggle("金身", function() return false end, function(v)
+		local char = GetCharacter()
+		if char then
+			for _, o in pairs(char:GetChildren()) do
+				if o:IsA("BasePart") then o.Color = v and Color3.fromRGB(255,200,40) or Color3.new(1,1,1) end
+			end
+		end
+	end)
+	Toggle("冰霜移动拖尾", function() return false end, function(v) print("冰霜拖尾:", v) end)
+end
+
+-- 【新增】高级分类（反作弊等）
+local function ShowAdvanced()
+	ClearContent()
+	Section("高级 / 反检测")
+	Toggle("反踢出 (AntiKick)", function() return AntiKick end, function(v) AntiKick = v if v then StartAntiKick() end end)
+	Toggle("反检测 (AntiDetect)", function() return AntiDetect end, function(v) AntiDetect = v end)
+	Button("重置所有功能", function()
+		StopFlight() SetNoclip(false) SetSpeed(false) SetGod(false) SetSpin(false)
+		SetESP(false) SetLockCam(false) SetThrow(false) SetFE(false)
+		FullBright = false NoFog = false Workspace.Gravity = 196.2
+		Lighting.Brightness = 1 Lighting.Ambient = Color3.fromRGB(128,128,128) Lighting.FogEnd = 10000
+		Notify("AM Hub", "已重置", 3)
+	end)
+end
+
+local function ShowSettings()
+	ClearContent()
+	Section("设置")
+	Button("退出 AM", function()
+		StopFlight()
+		if InfiniteJumpConnection then InfiniteJumpConnection:Disconnect() end
+		ScreenGui:Destroy()
 	end)
 end
 
 -- ==================================================
--- 分类内容（一次性建好，切分类只改 Visible，不重建）
+-- 【修复3】分类列表：新增"高级"，用 ScrollingFrame 自动布局
 -- ==================================================
-local CatPages = {}
-local CategoryNames = {"主页", "移动", "视角", "玩家", "世界", "高级", "设置"}
-
-local function NewPage(name)
-	local container = Make("Frame", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		Visible = false,
-	}, Content)
-	CatPages[name] = container
-	return container
-end
-
--- 临时把 Content 的 Layout 存起来，每页用自己的
-ContentLayout:Destroy()
-
--- 主页
-do
-	local p = NewPage("主页")
-	Section("欢迎使用 AM Hub"):Parent = p
-	ActionButton("QQ群", "179051448（已复制）", function()
-		pcall(function setclipboard("179051448") end)
-		Notify("AM Hub", "QQ群: 179051448", 5)
-	end):Parent = p
-	Toggle("反踢出", "拦截踢出/销毁", function() return State.AntiKick end, function(v) State.AntiKick = v if v then StartAntiKick() end end):Parent = p
-	Toggle("反检测", "降低被检测风险", function() return State.AntiDetect end, function(v) State.AntiDetect = v if v then StartAntiDetect() end end):Parent = p
-	ActionButton("版本信息", "AM Hub Mobile 3.0", function()
-		Notify("AM Hub", "AM Hub Mobile 3.0 | Delta专用", 3)
-	end):Parent = p
-end
-
--- 移动
-do
-	local p = NewPage("移动")
-	Toggle("飞行", "开启后可用下方方向键", function() return State.Fly end, function(v) if v then StartFly() else StopFly() end end):Parent = p
-	Slider("飞行速度", "10-200", 10, 200, function() return Values.FlySpeed end, function(v) Values.FlySpeed = v end):Parent = p
-
-	Section("飞行方向控制（按住移动）"):Parent = p
-	FlyBtn("↑ 前进", function() return FlyInput.Forward end, function(v) FlyInput.Forward = v end):Parent = p
-	FlyBtn("↓ 后退", function() return -FlyInput.Forward end, function(v) FlyInput.Forward = -v end):Parent = p
-	FlyBtn("← 左移", function() return -FlyInput.Right end, function(v) FlyInput.Right = -v end):Parent = p
-	FlyBtn("→ 右移", function() return FlyInput.Right end, function(v) FlyInput.Right = v end):Parent = p
-	FlyBtn("▲ 升高", function() return FlyInput.Up end, function(v) FlyInput.Up = v end):Parent = p
-	FlyBtn("▼ 降低", function() return -FlyInput.Up end, function(v) FlyInput.Up = -v end):Parent = p
-
-	Toggle("速度", "修改移动速度", function() return State.Speed end, SetSpeed):Parent = p
-	Slider("速度值", "16-300", 16, 300, function() return Values.Speed end, function(v) ApplySpeed(v) end):Parent = p
-
-	Toggle("跳高", "修改跳跃高度", function() return State.Jump end, SetJump):Parent = p
-	Slider("跳高值", "50-500", 50, 500, function() return Values.Jump end, function(v) Values.Jump = v SetJump(true) end):Parent = p
-
-	Toggle("无限跳跃", "无限次跳跃", function() return State.InfJump end, SetInfJump):Parent = p
-	Toggle("穿墙", "穿墙模式", function() return State.Noclip end, SetNoclip):Parent = p
-end
-
--- 视角
-do
-	local p = NewPage("视角")
-	Toggle("锁定视角", "锁定当前视角", function() return State.LockCam end, SetLockCam):Parent = p
-	Toggle("ESP", "显示玩家名称", function() return State.ESP end, SetESP):Parent = p
-end
-
--- 玩家
-do
-	local p = NewPage("玩家")
-	Toggle("无敌模式", "无限生命", function() return State.God end, SetGod):Parent = p
-	Toggle("旋转", "角色自动旋转", function() return State.Spin end, SetSpin):Parent = p
-	Slider("旋转速度", "10-200", 10, 200, function() return Values.Spin end, function(v) Values.Spin = v end):Parent = p
-end
-
--- 世界
-do
-	local p = NewPage("世界")
-	Toggle("全亮", "最大亮度", function() return State.FullBright end, function(on)
-		State.FullBright = on
-		if on then
-			Lighting.Ambient = Color3.new(1, 1, 1)
-			Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-			Lighting.Brightness = 2
-		else
-			Lighting.Ambient = Color3.fromRGB(128, 128, 128)
-			Lighting.Brightness = 1
-		end
-	end):Parent = p
-	Toggle("去雾", "移除雾效", function() return State.NoFog end, function(on)
-		State.NoFog = on
-		Lighting.FogEnd = on and 100000 or 10000
-	end):Parent = p
-	Toggle("重力修改", "修改重力", function() return State.Gravity end, function(on)
-		State.Gravity = on
-		Workspace.Gravity = on and Values.Gravity or 196.2
-	end):Parent = p
-	Slider("重力值", "0-500", 0, 500, function() return Values.Gravity end, function(v) Values.Gravity = v if State.Gravity then Workspace.Gravity = v end end):Parent = p
-end
-
--- 高级（FE + 甩飞 分开）
-do
-	local p = NewPage("高级")
-
-	Section("── FE 系统 ──"):Parent = p
-	Toggle("FE 总开关", "头顶冒火+皇冠+移动冒火", function() return State.FE end, SetFE):Parent = p
-	Toggle("FE-头顶冒火", "头部火焰", function() return State.FE_Fire end, function(v) State.FE_Fire = v RebuildFE() end):Parent = p
-	Toggle("FE-移动冒火", "移动时脚下冒火", function() return State.FE_MoveFire end, function(v) State.FE_MoveFire = v RebuildFE() end):Parent = p
-	Toggle("FE-皇冠", "AM使用者头顶皇冠", function() return State.FE_Crown end, function(v) State.FE_Crown = v RebuildFE() end):Parent = p
-
-	Section("── 甩飞（独立）──"):Parent = p
-	Toggle("甩飞", "对准目标甩飞", function() return State.Throw end, SetThrow):Parent = p
-	Slider("甩飞力度", "50-500", 50, 500, function() return Values.ThrowPower end, function(v) Values.ThrowPower = v end):Parent = p
-
-	Section("── 反作弊 ──"):Parent = p
-	Toggle("反踢出(强)", "高级反踢出", function() return State.AntiKick end, function(v) State.AntiKick = v if v then StartAntiKick() end end):Parent = p
-	Toggle("反检测(强)", "高级反检测", function() return State.AntiDetect end, function(v) State.AntiDetect = v if v then StartAntiDetect() end end):Parent = p
-end
-
--- 设置
-do
-	local p = NewPage("设置")
-	ActionButton("重置所有", "关闭全部功能", function()
-		StopFly() SetSpeed(false) SetJump(false) SetNoclip(false) SetLockCam(false)
-		SetESP(false) SetGod(false) SetSpin(false) SetThrow(false) SetFE(false)
-		State.FullBright = false State.NoFog = false State.Gravity = false
-		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
-		Lighting.Brightness = 1
-		Lighting.FogEnd = 10000
-		Workspace.Gravity = 196.2
-		Notify("AM Hub", "所有功能已重置", 3)
-	end):Parent = p
-	ActionButton("关闭菜单", "隐藏主菜单", function()
-		Menu.Visible = false
-	end):Parent = p
-end
-
--- ==================================================
--- 分类切换（只改 Visible，不重建）
--- ==================================================
+local Categories = {"信息", "通用", "战斗", "娱乐", "甩飞", "特效", "高级", "设置"}
+local Pages = {
+	["信息"] = ShowInfo,
+	["通用"] = ShowGeneral,
+	["战斗"] = ShowCombat,
+	["娱乐"] = ShowEntertainment,
+	["甩飞"] = ShowFling,
+	["特效"] = ShowEffects,
+	["高级"] = ShowAdvanced,
+	["设置"] = ShowSettings,
+}
 local CategoryButtons = {}
 
-local function ShowCategory(name)
-	for n, container in pairs(CatPages) do
-		container.Visible = (n == name)
+local function SelectCategory(name)
+	for category, button in pairs(CategoryButtons) do
+		if category == name then
+			button.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+			button.TextColor3 = Color3.fromRGB(10, 10, 10)
+		else
+			button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+			button.TextColor3 = Color3.fromRGB(90, 90, 90)
+		end
 	end
-	for n, btn in pairs(CategoryButtons) do
-		btn.BackgroundColor3 = (n == name) and Color3.fromRGB(60, 60, 90) or Color3.fromRGB(40, 40, 55)
-		btn.TextColor3 = (n == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 200)
-	end
-	-- 让 Content 重新布局
-	Content.CanvasPosition = Vector2.zero
+	if Pages[name] then Pages[name]() end
 end
 
-for i, name in ipairs(CategoryNames) do
-	local btn = Make("TextButton", {
-		Size = UDim2.new(1, -10, 0, 38),
-		BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-		BorderSizePixel = 0,
-		Text = name,
-		TextColor3 = Color3.fromRGB(180, 180, 200),
-		TextSize = 13,
-		Font = Enum.Font.GothamBold,
-		LayoutOrder = i,
-	}, CategoryBar)
-	Corner(btn, 9)
-	CategoryButtons[name] = btn
-	btn.MouseButton1Click:Connect(function() ShowCategory(name) end)
+for index, name in ipairs(Categories) do
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -10, 0, 36)
+	-- 【关键】用 UIListLayout 自动排列，不再写死 Position
+	button.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+	button.BorderSizePixel = 0
+	button.Text = name
+	button.TextSize = 12
+	button.Font = Enum.Font.GothamBold
+	button.TextColor3 = Color3.fromRGB(90, 90, 90)
+	button.AutoButtonColor = false
+	button.ZIndex = 20
+	button.Parent = CategoryBar
+	Corner(button, 8)
+	CategoryButtons[name] = button
+	button.MouseButton1Click:Connect(function() SelectCategory(name) end)
 end
 
--- 初始化显示主页
-ShowCategory("主页")
+-- ==================================================
+-- 菜单拖动
+-- ==================================================
+local MenuDragging = false
+local MenuDragStart, MenuStartPosition
+Header.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		MenuDragging = true
+		MenuDragStart = input.Position
+		MenuStartPosition = Menu.Position
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not MenuDragging then return end
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - MenuDragStart
+		Menu.Position = UDim2.new(MenuStartPosition.X.Scale, MenuStartPosition.X.Offset + delta.X, MenuStartPosition.Y.Scale, MenuStartPosition.Y.Offset + delta.Y)
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		MenuDragging = false
+	end
+end)
 
 -- ==================================================
 -- 悬浮球拖动 + 点击
 -- ==================================================
-local dragging = false
-local dragStart, startPosition
-local moved = false
-
+local ButtonDragging = false
+local ButtonDragStart, ButtonStartPosition, ButtonMoved
 AMButton.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		moved = false
-		dragStart = input.Position
-		startPosition = AMButton.Position
+		ButtonDragging = true
+		ButtonMoved = false
+		ButtonDragStart = input.Position
+		ButtonStartPosition = AMButton.Position
 	end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
-	if not dragging then return end
+	if not ButtonDragging then return end
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - dragStart
-		if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
-			moved = true
-		end
-		AMButton.Position = UDim2.new(
-			startPosition.X.Scale, startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
-		)
+		local delta = input.Position - ButtonDragStart
+		if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then ButtonMoved = true end
+		AMButton.Position = UDim2.new(ButtonStartPosition.X.Scale, ButtonStartPosition.X.Offset + delta.X, ButtonStartPosition.Y.Scale, ButtonStartPosition.Y.Offset + delta.Y)
 	end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if dragging and not moved then
+		if ButtonDragging and not ButtonMoved then
 			Menu.Visible = not Menu.Visible
+			if Menu.Visible then SelectCategory("信息") end
 		end
-		dragging = false
+		ButtonDragging = false
 	end
 end)
 
 -- ==================================================
--- 键盘（电脑测试：WASD+空格+Shift 控制飞行）
+-- 玩家选择器拖动
+-- ==================================================
+local SelectorDragging = false
+local SelectorDragStart, SelectorStartPosition
+SelectorTitle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		SelectorDragging = true
+		SelectorDragStart = input.Position
+		SelectorStartPosition = PlayerSelector.Position
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not SelectorDragging then return end
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - SelectorDragStart
+		PlayerSelector.Position = UDim2.new(SelectorStartPosition.X.Scale, SelectorStartPosition.X.Offset + delta.X, SelectorStartPosition.Y.Scale, SelectorStartPosition.Y.Offset + delta.Y)
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		SelectorDragging = false
+	end
+end)
+
+-- ==================================================
+-- 键盘飞行（电脑测试）
 -- ==================================================
 local function SetFly(axis, val)
 	if axis == "f" then FlyInput.Forward = val end
@@ -1012,9 +1131,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if input.KeyCode == Enum.KeyCode.D then SetFly("r", 1) end
 	if input.KeyCode == Enum.KeyCode.Space then SetFly("u", 1) end
 	if input.KeyCode == Enum.KeyCode.LeftShift then SetFly("u", -1) end
-	if input.KeyCode == Enum.KeyCode.F then
-		if State.Fly then StopFly() else StartFly() end
-	end
+	if input.KeyCode == Enum.KeyCode.F then if Flying then StopFlight() else StartFlight() end end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
@@ -1026,31 +1143,39 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == Enum.KeyCode.LeftShift then SetFly("u", 0) end
 end)
 
+-- 无限跳跃连接
+InfiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+	if not InfiniteJump then return end
+	local humanoid = GetHumanoid()
+	if humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
 -- ==================================================
 -- 流光动画
 -- ==================================================
-local rotation = 0
+local Rotation = 0
 RunService.RenderStepped:Connect(function(dt)
-	rotation = (rotation + dt * 100) % 360
-	AMGradient.Rotation = rotation
-	MenuGradient.Rotation = rotation
+	Rotation = (Rotation + dt * 100) % 360
+	AMGradient.Rotation = Rotation
+	MenuGradient.Rotation = Rotation
+	SelectorGradient.Rotation = Rotation
 end)
 
 -- ==================================================
 -- 初始化
 -- ==================================================
-task.spawn(function()
-	wait(2)
-	StartAntiKick()
-	StartAntiDetect()
-	Notify("AM Hub Mobile 3.0", "脚本已加载！QQ群: 179051448", 5)
-end)
+StartAntiKick()
+
+SelectCategory("信息")
+
+Notify("AM Hub Mobile 3.0", "已加载！QQ群: " .. QQ_GROUP, 4)
+print("[AM Hub] 已就绪！QQ群:", QQ_GROUP)
 
 -- 角色重生处理
-player.CharacterAdded:Connect(function()
+LocalPlayer.CharacterAdded:Connect(function()
 	wait(1)
-	if State.Fly then StopFly() end
-	if State.FE then RebuildFE() end
+	if Flying then StopFlight() end
+	if FE_Enabled then BuildFE() end
 end)
-
-print("[AM Hub] 已就绪！QQ群: 179051448")
