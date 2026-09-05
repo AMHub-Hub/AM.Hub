@@ -1,8 +1,8 @@
 --// AM Hub Mobile
 --// Luau / LocalScript
---// 360dp Design
---// 左侧：分类
---// 右侧：功能
+--// Mobile UI
+--// 无 DP / 无 UIScale
+--// 直接使用 Roblox Offset 尺寸
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -13,21 +13,19 @@ local player = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
 
 --==================================================
--- CONFIG
+-- 基础设置
 --==================================================
 
-local DESIGN_WIDTH = 360
-
-local MENU_WIDTH = 250
-local MENU_HEIGHT = 300
+local MENU_WIDTH = 280
+local MENU_HEIGHT = 330
 
 local FLOAT_SIZE = 58
 
--- 把这里换成你的 QQ 群
-local QQ_GROUP = "你的QQ群号"
+-- 在这里填写你的 QQ 群号
+local QQ_GROUP = "179051448"
 
 --==================================================
--- GUI
+-- ScreenGui
 --==================================================
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -37,74 +35,42 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
 --==================================================
--- 自适应
---==================================================
-
-local UIScale = Instance.new("UIScale")
-UIScale.Parent = ScreenGui
-
-local function UpdateScale()
-
-	local camera = workspace.CurrentCamera
-
-	if not camera then
-		return
-	end
-
-	local width = camera.ViewportSize.X
-
-	local scale = width / DESIGN_WIDTH
-
-	scale = math.clamp(scale, 0.75, 2)
-
-	UIScale.Scale = scale
-end
-
-UpdateScale()
-
-if workspace.CurrentCamera then
-	workspace.CurrentCamera:GetPropertyChangedSignal(
-		"ViewportSize"
-	):Connect(UpdateScale)
-end
-
---==================================================
 -- 彩虹颜色
 --==================================================
 
 local rainbow = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 80)),
-	ColorSequenceKeypoint.new(.16, Color3.fromRGB(255, 150, 0)),
-	ColorSequenceKeypoint.new(.33, Color3.fromRGB(0, 255, 100)),
-	ColorSequenceKeypoint.new(.50, Color3.fromRGB(0, 200, 255)),
-	ColorSequenceKeypoint.new(.66, Color3.fromRGB(80, 80, 255)),
-	ColorSequenceKeypoint.new(.83, Color3.fromRGB(180, 0, 255)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 120))
+	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 80)),
+	ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 150, 0)),
+	ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 100)),
+	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 200, 255)),
+	ColorSequenceKeypoint.new(0.66, Color3.fromRGB(80, 80, 255)),
+	ColorSequenceKeypoint.new(0.83, Color3.fromRGB(180, 0, 255)),
+	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 120))
 })
 
 --==================================================
--- 工具
+-- 工具函数
 --==================================================
 
-local function Corner(object, radius)
+local function AddCorner(object, radius)
 
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, radius)
-	c.Parent = object
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = object
 
-	return c
+	return corner
+
 end
 
-local function Stroke(object, color, thickness)
+local function AddStroke(object, color, thickness)
 
-	local s = Instance.new("UIStroke")
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = thickness
+	stroke.Parent = object
 
-	s.Color = color
-	s.Thickness = thickness
+	return stroke
 
-	s.Parent = object
-
-	return s
 end
 
 --==================================================
@@ -114,47 +80,69 @@ end
 local AMButton = Instance.new("TextButton")
 
 AMButton.Name = "AMButton"
-AMButton.Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE)
+
+AMButton.Size = UDim2.fromOffset(
+	FLOAT_SIZE,
+	FLOAT_SIZE
+)
 
 AMButton.Position = UDim2.new(
 	0,
-	20,
+	18,
 	0.5,
 	-29
 )
 
-AMButton.BackgroundColor3 = Color3.fromRGB(255,255,255)
-AMButton.BackgroundTransparency = .03
+AMButton.BackgroundColor3 =
+	Color3.fromRGB(255, 255, 255)
+
+AMButton.BackgroundTransparency = 0.03
 
 AMButton.BorderSizePixel = 0
 
 AMButton.Text = "AM"
-AMButton.TextColor3 = Color3.fromRGB(20,20,20)
+
+AMButton.TextColor3 =
+	Color3.fromRGB(20, 20, 20)
 
 AMButton.TextSize = 19
-AMButton.Font = Enum.Font.GothamBold
+
+AMButton.Font =
+	Enum.Font.GothamBold
 
 AMButton.AutoButtonColor = false
+
 AMButton.Active = true
-AMButton.ZIndex = 50
+
+AMButton.ZIndex = 100
 
 AMButton.Parent = ScreenGui
 
-Corner(AMButton, 100)
+AddCorner(AMButton, 100)
 
-local AMStroke = Stroke(
-	AMButton,
-	Color3.fromRGB(255,0,100),
-	3
-)
+--==================================================
+-- 悬浮球流光
+--==================================================
+
+local AMStroke = Instance.new("UIStroke")
+
+AMStroke.Name = "RainbowStroke"
+
+AMStroke.Thickness = 3
+
+AMStroke.ApplyStrokeMode =
+	Enum.ApplyStrokeMode.Border
+
+AMStroke.Parent = AMButton
 
 local AMGradient = Instance.new("UIGradient")
 
 AMGradient.Color = rainbow
+
 AMGradient.Parent = AMStroke
 
 --==================================================
--- 主菜单
+-- 菜单
 --==================================================
 
 local Menu = Instance.new("Frame")
@@ -168,40 +156,72 @@ Menu.Size = UDim2.fromOffset(
 
 Menu.Position = UDim2.new(
 	0,
-	90,
+	88,
 	0.5,
 	-MENU_HEIGHT / 2
 )
 
-Menu.BackgroundColor3 = Color3.fromRGB(
-	255,
-	255,
-	255
-)
+Menu.BackgroundColor3 =
+	Color3.fromRGB(255, 255, 255)
 
-Menu.BackgroundTransparency = .02
+Menu.BackgroundTransparency = 0.02
 
 Menu.BorderSizePixel = 0
 
 Menu.Visible = false
+
 Menu.Active = true
 
 Menu.ZIndex = 10
 
 Menu.Parent = ScreenGui
 
-Corner(Menu,15)
+AddCorner(Menu, 16)
 
-local MenuStroke = Stroke(
-	Menu,
-	Color3.fromRGB(255,0,100),
-	3
-)
+--==================================================
+-- 菜单流光边框
+--==================================================
+
+local MenuStroke = Instance.new("UIStroke")
+
+MenuStroke.Name = "RainbowStroke"
+
+MenuStroke.Thickness = 3
+
+MenuStroke.ApplyStrokeMode =
+	Enum.ApplyStrokeMode.Border
+
+MenuStroke.Parent = Menu
 
 local MenuGradient = Instance.new("UIGradient")
 
 MenuGradient.Color = rainbow
+
 MenuGradient.Parent = MenuStroke
+
+--==================================================
+-- 顶部标题栏
+--==================================================
+
+local Header = Instance.new("Frame")
+
+Header.Name = "Header"
+
+Header.Size = UDim2.new(
+	1,
+	0,
+	0,
+	48
+)
+
+Header.Position =
+	UDim2.fromOffset(0, 0)
+
+Header.BackgroundTransparency = 1
+
+Header.ZIndex = 20
+
+Header.Parent = Menu
 
 --==================================================
 -- 标题
@@ -211,135 +231,143 @@ local Title = Instance.new("TextLabel")
 
 Title.Size = UDim2.new(
 	1,
-	-50,
-	0,
-	42
+	-55,
+	1,
+	0
 )
 
-Title.Position = UDim2.fromOffset(
-	15,
-	5
-)
+Title.Position =
+	UDim2.fromOffset(15, 0)
 
 Title.BackgroundTransparency = 1
 
 Title.Text = "AM Hub"
 
-Title.TextColor3 = Color3.fromRGB(
-	20,
-	20,
-	20
-)
+Title.TextColor3 =
+	Color3.fromRGB(20, 20, 20)
 
 Title.TextSize = 21
-Title.Font = Enum.Font.GothamBold
+
+Title.Font =
+	Enum.Font.GothamBold
 
 Title.TextXAlignment =
 	Enum.TextXAlignment.Left
 
-Title.ZIndex = 20
+Title.ZIndex = 21
 
-Title.Parent = Menu
+Title.Parent = Header
 
 --==================================================
--- 关闭
+-- 关闭按钮
 --==================================================
 
-local Close = Instance.new("TextButton")
+local CloseButton = Instance.new("TextButton")
 
-Close.Size = UDim2.fromOffset(35,35)
+CloseButton.Name = "CloseButton"
 
-Close.Position = UDim2.new(
-	1,
-	-42,
-	0,
-	6
-)
+CloseButton.Size =
+	UDim2.fromOffset(38, 38)
 
-Close.BackgroundTransparency = 1
+CloseButton.Position =
+	UDim2.new(
+		1,
+		-43,
+		0,
+		5
+	)
 
-Close.Text = "×"
+CloseButton.BackgroundTransparency = 1
 
-Close.TextColor3 =
-	Color3.fromRGB(30,30,30)
+CloseButton.Text = "×"
 
-Close.TextSize = 25
+CloseButton.TextColor3 =
+	Color3.fromRGB(30, 30, 30)
 
-Close.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 27
 
-Close.ZIndex = 30
+CloseButton.Font =
+	Enum.Font.GothamBold
 
-Close.Parent = Menu
+CloseButton.AutoButtonColor = false
 
-Close.MouseButton1Click:Connect(function()
+CloseButton.ZIndex = 30
+
+CloseButton.Parent = Header
+
+CloseButton.MouseButton1Click:Connect(function()
 
 	Menu.Visible = false
 
 end)
 
 --==================================================
--- 左侧分类栏
+-- 左侧分类
 --==================================================
 
 local CategoryBar = Instance.new("Frame")
 
+CategoryBar.Name = "CategoryBar"
+
 CategoryBar.Size = UDim2.new(
 	0,
-	72,
+	82,
 	1,
-	-52
+	-58
 )
 
-CategoryBar.Position = UDim2.fromOffset(
-	5,
-	47
-)
+CategoryBar.Position =
+	UDim2.fromOffset(6, 52)
 
 CategoryBar.BackgroundColor3 =
-	Color3.fromRGB(245,245,245)
+	Color3.fromRGB(245, 245, 245)
 
 CategoryBar.BorderSizePixel = 0
 
+CategoryBar.ZIndex = 15
+
 CategoryBar.Parent = Menu
 
-Corner(CategoryBar,10)
+AddCorner(CategoryBar, 11)
 
 --==================================================
--- 右侧功能区
+-- 右侧内容
 --==================================================
 
 local Content = Instance.new("ScrollingFrame")
 
+Content.Name = "Content"
+
 Content.Size = UDim2.new(
 	1,
-	-87,
+	-97,
 	1,
-	-52
+	-58
 )
 
-Content.Position = UDim2.fromOffset(
-	82,
-	47
-)
+Content.Position =
+	UDim2.fromOffset(91, 52)
 
 Content.BackgroundTransparency = 1
 
 Content.BorderSizePixel = 0
 
-Content.ScrollBarThickness = 3
+Content.ScrollBarThickness = 4
 
 Content.ScrollBarImageColor3 =
-	Color3.fromRGB(170,170,170)
+	Color3.fromRGB(160, 160, 160)
 
-Content.CanvasSize =
-	UDim2.new(0,0,0,0)
+Content.ScrollingDirection =
+	Enum.ScrollingDirection.Y
+
+Content.ZIndex = 15
 
 Content.Parent = Menu
 
 local ContentLayout = Instance.new("UIListLayout")
 
 ContentLayout.Padding =
-	UDim.new(0,7)
+	UDim.new(0, 7)
 
 ContentLayout.HorizontalAlignment =
 	Enum.HorizontalAlignment.Center
@@ -350,32 +378,15 @@ ContentLayout:GetPropertyChangedSignal(
 	"AbsoluteContentSize"
 ):Connect(function()
 
-	Content.CanvasSize =
-	UDim2.fromOffset(
+	Content.CanvasSize = UDim2.fromOffset(
 		0,
-		ContentLayout.AbsoluteContentSize.Y + 10
+		ContentLayout.AbsoluteContentSize.Y + 12
 	)
 
 end)
 
 --==================================================
--- 分类数据
---==================================================
-
-local Categories = {
-	"信息",
-	"通用",
-	"战斗",
-	"娱乐",
-	"FE",
-	"特效",
-	"设置"
-}
-
-local CategoryButtons = {}
-
---==================================================
--- 清空右侧
+-- 清理内容
 --==================================================
 
 local function ClearContent()
@@ -383,10 +394,14 @@ local function ClearContent()
 	for _, object in ipairs(Content:GetChildren()) do
 
 		if not object:IsA("UIListLayout") then
+
 			object:Destroy()
+
 		end
 
 	end
+
+	Content.CanvasPosition = Vector2.new(0, 0)
 
 end
 
@@ -398,19 +413,15 @@ local function CreateSectionTitle(text)
 
 	local label = Instance.new("TextLabel")
 
-	label.Size = UDim2.new(
-		1,
-		-10,
-		0,
-		30
-	)
+	label.Size =
+		UDim2.new(1, -10, 0, 30)
 
 	label.BackgroundTransparency = 1
 
 	label.Text = text
 
 	label.TextColor3 =
-		Color3.fromRGB(25,25,25)
+		Color3.fromRGB(20, 20, 20)
 
 	label.TextSize = 17
 
@@ -420,9 +431,12 @@ local function CreateSectionTitle(text)
 	label.TextXAlignment =
 		Enum.TextXAlignment.Left
 
+	label.ZIndex = 20
+
 	label.Parent = Content
 
 	return label
+
 end
 
 --==================================================
@@ -433,36 +447,35 @@ local function CreateButton(text, callback)
 
 	local button = Instance.new("TextButton")
 
-	button.Size = UDim2.new(
-		1,
-		-10,
-		0,
-		38
-	)
+	button.Size =
+		UDim2.new(1, -10, 0, 42)
 
 	button.BackgroundColor3 =
-		Color3.fromRGB(245,245,245)
+		Color3.fromRGB(245, 245, 245)
 
 	button.BorderSizePixel = 0
 
 	button.Text = text
 
 	button.TextColor3 =
-		Color3.fromRGB(30,30,30)
+		Color3.fromRGB(25, 25, 25)
 
 	button.TextSize = 14
 
-	button.Font = Enum.Font.Gotham
+	button.Font =
+		Enum.Font.Gotham
 
 	button.AutoButtonColor = true
 
+	button.ZIndex = 20
+
 	button.Parent = Content
 
-	Corner(button,8)
+	AddCorner(button, 9)
 
-	Stroke(
+	AddStroke(
 		button,
-		Color3.fromRGB(220,220,220),
+		Color3.fromRGB(220, 220, 220),
 		1
 	)
 
@@ -475,6 +488,7 @@ local function CreateButton(text, callback)
 	end
 
 	return button
+
 end
 
 --==================================================
@@ -485,25 +499,26 @@ local function CreateToggle(text, default, callback)
 
 	local button = Instance.new("TextButton")
 
-	button.Size = UDim2.new(
-		1,
-		-10,
-		0,
-		38
-	)
+	button.Size =
+		UDim2.new(1, -10, 0, 42)
 
 	button.BackgroundColor3 =
-		Color3.fromRGB(245,245,245)
+		Color3.fromRGB(245, 245, 245)
 
 	button.BorderSizePixel = 0
 
 	button.TextSize = 14
 
-	button.Font = Enum.Font.Gotham
+	button.Font =
+		Enum.Font.GothamBold
+
+	button.AutoButtonColor = false
+
+	button.ZIndex = 20
 
 	button.Parent = Content
 
-	Corner(button,8)
+	AddCorner(button, 9)
 
 	local enabled = default or false
 
@@ -512,18 +527,24 @@ local function CreateToggle(text, default, callback)
 		if enabled then
 
 			button.Text =
-				text .. "    [开启]"
+				text .. "    ● 开启"
 
 			button.TextColor3 =
-				Color3.fromRGB(0,150,70)
+				Color3.fromRGB(0, 150, 80)
+
+			button.BackgroundColor3 =
+				Color3.fromRGB(235, 250, 240)
 
 		else
 
 			button.Text =
-				text .. "    [关闭]"
+				text .. "    ○ 关闭"
 
 			button.TextColor3 =
-				Color3.fromRGB(50,50,50)
+				Color3.fromRGB(50, 50, 50)
+
+			button.BackgroundColor3 =
+				Color3.fromRGB(245, 245, 245)
 
 		end
 
@@ -538,119 +559,142 @@ local function CreateToggle(text, default, callback)
 		Refresh()
 
 		if callback then
+
 			callback(enabled)
+
 		end
 
 	end)
 
 	return button
+
 end
 
 --==================================================
 -- 滑块
 --==================================================
 
-local function CreateSlider(text, min, max, default, callback)
+local function CreateSlider(
+	text,
+	minimum,
+	maximum,
+	default,
+	callback
+)
 
 	local holder = Instance.new("Frame")
 
-	holder.Size = UDim2.new(
-		1,
-		-10,
-		0,
-		55
-	)
+	holder.Size =
+		UDim2.new(1, -10, 0, 60)
 
 	holder.BackgroundColor3 =
-		Color3.fromRGB(245,245,245)
+		Color3.fromRGB(245, 245, 245)
 
 	holder.BorderSizePixel = 0
 
+	holder.ZIndex = 20
+
 	holder.Parent = Content
 
-	Corner(holder,8)
+	AddCorner(holder, 9)
 
 	local label = Instance.new("TextLabel")
 
-	label.Size = UDim2.new(
-		1,
-		-15,
-		0,
-		22
-	)
+	label.Size =
+		UDim2.new(1, -16, 0, 24)
 
 	label.Position =
-		UDim2.fromOffset(8,2)
+		UDim2.fromOffset(8, 3)
 
 	label.BackgroundTransparency = 1
 
 	label.TextColor3 =
-		Color3.fromRGB(30,30,30)
+		Color3.fromRGB(30, 30, 30)
 
 	label.TextSize = 13
 
-	label.Font = Enum.Font.Gotham
+	label.Font =
+		Enum.Font.Gotham
 
 	label.TextXAlignment =
 		Enum.TextXAlignment.Left
+
+	label.ZIndex = 21
 
 	label.Parent = holder
 
 	local bar = Instance.new("Frame")
 
-	bar.Size = UDim2.new(
-		1,
-		-16,
-		0,
-		6
-	)
+	bar.Size =
+		UDim2.new(1, -20, 0, 7)
 
 	bar.Position =
-		UDim2.new(
-			0,
-			8,
-			0,
-			34
-		)
+		UDim2.fromOffset(10, 38)
 
 	bar.BackgroundColor3 =
-		Color3.fromRGB(215,215,215)
+		Color3.fromRGB(215, 215, 215)
 
 	bar.BorderSizePixel = 0
 
+	bar.ZIndex = 21
+
 	bar.Parent = holder
 
-	Corner(bar,10)
+	AddCorner(bar, 10)
 
 	local fill = Instance.new("Frame")
 
 	fill.Size =
-		UDim2.new(0,0,1,0)
+		UDim2.new(0, 0, 1, 0)
 
 	fill.BackgroundColor3 =
-		Color3.fromRGB(100,100,100)
+		Color3.fromRGB(80, 80, 80)
 
 	fill.BorderSizePixel = 0
 
+	fill.ZIndex = 22
+
 	fill.Parent = bar
 
-	Corner(fill,10)
+	AddCorner(fill, 10)
+
+	local knob = Instance.new("Frame")
+
+	knob.Size =
+		UDim2.fromOffset(15, 15)
+
+	knob.AnchorPoint =
+		Vector2.new(.5, .5)
+
+	knob.Position =
+		UDim2.new(0, 0, .5, 0)
+
+	knob.BackgroundColor3 =
+		Color3.fromRGB(50, 50, 50)
+
+	knob.BorderSizePixel = 0
+
+	knob.ZIndex = 23
+
+	knob.Parent = bar
+
+	AddCorner(knob, 20)
 
 	local dragging = false
 
 	local value = default
 
-	local function SetValue(v)
+	local function SetValue(newValue)
 
 		value = math.clamp(
-			v,
-			min,
-			max
+			newValue,
+			minimum,
+			maximum
 		)
 
 		local percent =
-			(value - min) /
-			(max - min)
+			(value - minimum) /
+			(maximum - minimum)
 
 		fill.Size =
 			UDim2.new(
@@ -660,17 +704,27 @@ local function CreateSlider(text, min, max, default, callback)
 				0
 			)
 
+		knob.Position =
+			UDim2.new(
+				percent,
+				0,
+				0.5,
+				0
+			)
+
 		label.Text =
 			text .. " : " ..
 			math.floor(value)
 
 		if callback then
+
 			callback(value)
+
 		end
 
 	end
 
-	local function Update(input)
+	local function UpdateFromInput(input)
 
 		local x =
 			input.Position.X -
@@ -684,8 +738,9 @@ local function CreateSlider(text, min, max, default, callback)
 			)
 
 		SetValue(
-			min +
-			(max-min)*percent
+			minimum +
+			(maximum - minimum) *
+			percent
 		)
 
 	end
@@ -699,7 +754,7 @@ local function CreateSlider(text, min, max, default, callback)
 
 			dragging = true
 
-			Update(input)
+			UpdateFromInput(input)
 
 		end
 
@@ -716,7 +771,7 @@ local function CreateSlider(text, min, max, default, callback)
 			or input.UserInputType ==
 			Enum.UserInputType.MouseMovement then
 
-			Update(input)
+			UpdateFromInput(input)
 
 		end
 
@@ -738,6 +793,7 @@ local function CreateSlider(text, min, max, default, callback)
 	SetValue(default)
 
 	return holder
+
 end
 
 --==================================================
@@ -753,8 +809,7 @@ local function ShowInfo()
 	)
 
 	CreateButton(
-		"欢迎使用 AM Hub",
-		nil
+		"欢迎使用 AM Hub"
 	)
 
 	local accountAge =
@@ -768,21 +823,24 @@ local function ShowInfo()
 
 	CreateButton(
 		"Roblox 账户年龄：" ..
-		years .. " 年 " ..
-		days .. " 天",
-		nil
-	)
-
-	CreateButton(
-		"QQ 群：" ..
-		QQ_GROUP,
-		nil
+		years ..
+		" 年 " ..
+		days ..
+		" 天"
 	)
 
 	CreateButton(
 		"用户名：" ..
-		player.Name,
-		nil
+		player.Name
+	)
+
+	CreateButton(
+		"QQ 群：" ..
+		QQ_GROUP
+	)
+
+	CreateButton(
+		"AM Mobile"
 	)
 
 end
@@ -803,7 +861,12 @@ local function ShowGeneral()
 		"飞行",
 		false,
 		function(enabled)
-			print("飞行：", enabled)
+
+			print(
+				"飞行：",
+				enabled
+			)
+
 		end
 	)
 
@@ -843,14 +906,28 @@ local function ShowGeneral()
 				)
 
 			if humanoid then
-				humanoid.WalkSpeed = value
+
+				humanoid.WalkSpeed =
+					value
+
 			end
 
 		end
 	)
 
+	CreateButton(
+		"移动方式",
+		function()
+
+			print(
+				"移动方式选择"
+			)
+
+		end
+	)
+
 	CreateSlider(
-		"跳跃高度",
+		"跳高",
 		0,
 		300,
 		50,
@@ -866,7 +943,10 @@ local function ShowGeneral()
 				)
 
 			if humanoid then
-				humanoid.JumpPower = value
+
+				humanoid.JumpPower =
+					value
+
 			end
 
 		end
@@ -876,18 +956,12 @@ local function ShowGeneral()
 		"重力",
 		0,
 		300,
-		196.2,
+		196,
 		function(value)
 
-			workspace.Gravity = value
+			workspace.Gravity =
+				value
 
-		end
-	)
-
-	CreateButton(
-		"移动方式选择",
-		function()
-			print("移动方式选择")
 		end
 	)
 
@@ -895,7 +969,12 @@ local function ShowGeneral()
 		"点击屏幕瞬移",
 		false,
 		function(enabled)
-			print("点击瞬移：",enabled)
+
+			print(
+				"点击瞬移：",
+				enabled
+			)
+
 		end
 	)
 
@@ -903,7 +982,12 @@ local function ShowGeneral()
 		"踏空飞行",
 		false,
 		function(enabled)
-			print("踏空飞行：",enabled)
+
+			print(
+				"踏空飞行：",
+				enabled
+			)
+
 		end
 	)
 
@@ -943,7 +1027,7 @@ local function ShowGeneral()
 		function()
 
 			print(
-				"重新选择服务器需要接入你的 Teleport 系统"
+				"重新选择服务器"
 			)
 
 		end
@@ -967,17 +1051,27 @@ local function ShowCombat()
 		"透视",
 		false,
 		function(enabled)
-			print("透视：",enabled)
+
+			print(
+				"透视状态：",
+				enabled
+			)
+
 		end
 	)
 
 	CreateSlider(
-		"透视范围",
+		"范围",
 		0,
 		1500,
 		150,
 		function(value)
-			print("透视范围：",value)
+
+			print(
+				"范围：",
+				value
+			)
+
 		end
 	)
 
@@ -987,7 +1081,12 @@ local function ShowCombat()
 		180,
 		90,
 		function(value)
-			print("FOV：",value)
+
+			print(
+				"FOV：",
+				value
+			)
+
 		end
 	)
 
@@ -995,7 +1094,12 @@ local function ShowCombat()
 		"子弹追踪",
 		false,
 		function(enabled)
-			print("子弹追踪：",enabled)
+
+			print(
+				"子弹追踪：",
+				enabled
+			)
+
 		end
 	)
 
@@ -1003,28 +1107,45 @@ local function ShowCombat()
 		"无限子弹",
 		false,
 		function(enabled)
-			print("无限子弹：",enabled)
+
+			print(
+				"无限子弹：",
+				enabled
+			)
+
 		end
 	)
 
 	CreateButton(
 		"敌对颜色：红色",
 		function()
-			print("敌对颜色")
+
+			print(
+				"敌对颜色"
+			)
+
 		end
 	)
 
 	CreateButton(
 		"我方颜色：蓝色",
 		function()
-			print("我方颜色")
+
+			print(
+				"我方颜色"
+			)
+
 		end
 	)
 
 	CreateButton(
-		"自定义透视颜色",
+		"自定义颜色",
 		function()
-			print("打开颜色选择器")
+
+			print(
+				"颜色选择器"
+			)
+
 		end
 	)
 
@@ -1050,7 +1171,7 @@ local function ShowEntertainment()
 		function(value)
 
 			print(
-				"FPS 设置：",
+				"FPS：",
 				value
 			)
 
@@ -1076,7 +1197,7 @@ local function ShowFE()
 		function()
 
 			print(
-				"打开玩家选择器"
+				"玩家选择器"
 			)
 
 		end
@@ -1087,7 +1208,7 @@ local function ShowFE()
 		function()
 
 			print(
-				"甩飞功能需要接入你自己的游戏逻辑"
+				"甩飞"
 			)
 
 		end
@@ -1098,18 +1219,20 @@ local function ShowFE()
 		function()
 
 			print(
-				"传送功能需要接入你自己的游戏逻辑"
+				"传送"
 			)
 
 		end
 	)
 
-	CreateButton(
+	CreateToggle(
 		"环绕",
-		function()
+		false,
+		function(enabled)
 
 			print(
-				"环绕功能需要接入你自己的游戏逻辑"
+				"环绕：",
+				enabled
 			)
 
 		end
@@ -1184,7 +1307,9 @@ local function ShowEffects()
 				character:GetChildren()
 			) do
 
-				if object:IsA("BasePart") then
+				if object:IsA(
+					"BasePart"
+				) then
 
 					if enabled then
 
@@ -1193,6 +1318,15 @@ local function ShowEffects()
 								255,
 								200,
 								40
+							)
+
+					else
+
+						object.Color =
+							Color3.fromRGB(
+								255,
+								255,
+								255
 							)
 
 					end
@@ -1231,7 +1365,9 @@ local function ShowEffects()
 				)
 
 			if old then
+
 				old:Destroy()
+
 			end
 
 			if enabled then
@@ -1245,7 +1381,8 @@ local function ShowEffects()
 				fire.Heat = 8
 				fire.Size = 6
 
-				fire.Parent = head
+				fire.Parent =
+					head
 
 			end
 
@@ -1291,24 +1428,46 @@ local function ShowSettings()
 end
 
 --==================================================
--- 分类切换
+-- 分类
 --==================================================
 
-local Functions = {
-	["信息"] = ShowInfo,
-	["通用"] = ShowGeneral,
-	["战斗"] = ShowCombat,
-	["娱乐"] = ShowEntertainment,
-	["FE"] = ShowFE,
-	["特效"] = ShowEffects,
-	["设置"] = ShowSettings
+local Categories = {
+	"信息",
+	"通用",
+	"战斗",
+	"娱乐",
+	"FE",
+	"特效",
+	"设置"
 }
 
-local currentCategory = nil
+local CategoryButtons = {}
+
+local Pages = {
+
+	["信息"] =
+		ShowInfo,
+
+	["通用"] =
+		ShowGeneral,
+
+	["战斗"] =
+		ShowCombat,
+
+	["娱乐"] =
+		ShowEntertainment,
+
+	["FE"] =
+		ShowFE,
+
+	["特效"] =
+		ShowEffects,
+
+	["设置"] =
+		ShowSettings
+}
 
 local function SelectCategory(name)
-
-	currentCategory = name
 
 	for category, button in pairs(
 		CategoryButtons
@@ -1318,16 +1477,16 @@ local function SelectCategory(name)
 
 			button.BackgroundColor3 =
 				Color3.fromRGB(
-					225,
-					225,
-					225
+					220,
+					220,
+					220
 				)
 
 			button.TextColor3 =
 				Color3.fromRGB(
-					0,
-					0,
-					0
+					10,
+					10,
+					10
 				)
 
 		else
@@ -1350,11 +1509,13 @@ local function SelectCategory(name)
 
 	end
 
-	local callback =
-		Functions[name]
+	local page =
+		Pages[name]
 
-	if callback then
-		callback()
+	if page then
+
+		page()
+
 	end
 
 end
@@ -1363,7 +1524,9 @@ end
 -- 创建分类按钮
 --==================================================
 
-for index, name in ipairs(Categories) do
+for index, name in ipairs(
+	Categories
+) do
 
 	local button =
 		Instance.new("TextButton")
@@ -1371,15 +1534,15 @@ for index, name in ipairs(Categories) do
 	button.Size =
 		UDim2.new(
 			1,
-			-8,
+			-10,
 			0,
-			31
+			36
 		)
 
 	button.Position =
 		UDim2.fromOffset(
-			4,
-			(index - 1) * 34
+			5,
+			5 + (index - 1) * 41
 		)
 
 	button.BackgroundColor3 =
@@ -1407,9 +1570,12 @@ for index, name in ipairs(Categories) do
 
 	button.AutoButtonColor = false
 
-	button.Parent = CategoryBar
+	button.ZIndex = 20
 
-	Corner(button,7)
+	button.Parent =
+		CategoryBar
+
+	AddCorner(button, 8)
 
 	CategoryButtons[name] =
 		button
@@ -1426,13 +1592,16 @@ end
 
 --==================================================
 -- 菜单拖动
+-- 只允许拖顶部标题栏
+-- 不会挡住下面的按钮
 --==================================================
 
 local menuDragging = false
+
 local menuDragStart
 local menuStartPosition
 
-Title.InputBegan:Connect(function(input)
+Header.InputBegan:Connect(function(input)
 
 	if input.UserInputType ==
 		Enum.UserInputType.Touch
@@ -1499,8 +1668,10 @@ end)
 --==================================================
 
 local buttonDragging = false
+
 local buttonDragStart
 local buttonStartPosition
+
 local buttonMoved = false
 
 AMButton.InputBegan:Connect(function(input)
@@ -1511,6 +1682,7 @@ AMButton.InputBegan:Connect(function(input)
 		Enum.UserInputType.MouseButton1 then
 
 		buttonDragging = true
+
 		buttonMoved = false
 
 		buttonDragStart =
@@ -1582,7 +1754,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 --==================================================
--- 流光
+-- 彩色流光
 --==================================================
 
 local rotation = 0
@@ -1601,7 +1773,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 --==================================================
--- 默认打开信息
+-- 默认显示信息
 --==================================================
 
 SelectCategory("信息")
