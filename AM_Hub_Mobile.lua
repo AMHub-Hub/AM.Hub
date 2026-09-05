@@ -33,18 +33,21 @@ local rainbow = ColorSequence.new({
 })
 
 --==================================================
--- AM 悬浮球
+-- 悬浮球
 --==================================================
 
 local AMButton = Instance.new("TextButton")
 AMButton.Name = "AMButton"
 AMButton.Size = UDim2.fromOffset(58, 58)
-AMButton.Position = UDim2.new(0, 25, 0.5, -29)
-AMButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-AMButton.BackgroundTransparency = 0.18
+AMButton.Position = UDim2.new(0, 20, 0.5, -29)
+
+-- 白色
+AMButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AMButton.BackgroundTransparency = 0.05
+
 AMButton.BorderSizePixel = 0
 AMButton.Text = "AM"
-AMButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AMButton.TextColor3 = Color3.fromRGB(20, 20, 20)
 AMButton.TextSize = 19
 AMButton.Font = Enum.Font.GothamBold
 AMButton.AutoButtonColor = false
@@ -55,38 +58,63 @@ local AMCorner = Instance.new("UICorner")
 AMCorner.CornerRadius = UDim.new(1, 0)
 AMCorner.Parent = AMButton
 
+--==================================================
+-- 悬浮球彩色流光边框
+--==================================================
+
 local AMStroke = Instance.new("UIStroke")
+AMStroke.Name = "RainbowStroke"
 AMStroke.Thickness = 3
+AMStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 AMStroke.Parent = AMButton
 
 local AMGradient = Instance.new("UIGradient")
+AMGradient.Name = "RainbowGradient"
 AMGradient.Color = rainbow
+AMGradient.Rotation = 0
 AMGradient.Parent = AMStroke
 
 --==================================================
--- 功能菜单
+-- 菜单
+-- 360dp 参考宽度
+-- 菜单宽度 = 250dp
 --==================================================
 
 local Menu = Instance.new("Frame")
 Menu.Name = "Menu"
-Menu.Size = UDim2.fromOffset(230, 250)
-Menu.Position = UDim2.new(0, 95, 0.5, -125)
-Menu.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-Menu.BackgroundTransparency = 0.12
+
+-- 250dp
+Menu.Size = UDim2.fromOffset(250, 270)
+
+Menu.Position = UDim2.new(0, 90, 0.5, -135)
+
+-- 白色菜单
+Menu.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Menu.BackgroundTransparency = 0.05
+
 Menu.BorderSizePixel = 0
 Menu.Visible = false
+Menu.Active = true
 Menu.Parent = ScreenGui
 
 local MenuCorner = Instance.new("UICorner")
 MenuCorner.CornerRadius = UDim.new(0, 15)
 MenuCorner.Parent = Menu
 
+--==================================================
+-- 菜单彩色流光边框
+--==================================================
+
 local MenuStroke = Instance.new("UIStroke")
+MenuStroke.Name = "RainbowStroke"
 MenuStroke.Thickness = 3
+MenuStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 MenuStroke.Parent = Menu
 
 local MenuGradient = Instance.new("UIGradient")
+MenuGradient.Name = "RainbowGradient"
 MenuGradient.Color = rainbow
+MenuGradient.Rotation = 0
 MenuGradient.Parent = MenuStroke
 
 --==================================================
@@ -94,51 +122,48 @@ MenuGradient.Parent = MenuStroke
 --==================================================
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 0, 45)
-Title.Position = UDim2.fromOffset(10, 5)
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -60, 0, 45)
+Title.Position = UDim2.fromOffset(15, 7)
 Title.BackgroundTransparency = 1
 Title.Text = "AM Hub"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextSize = 21
 Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Menu
 
 --==================================================
--- 临时功能按钮
+-- 菜单拖动区域
 --==================================================
 
-local TestButton = Instance.new("TextButton")
-TestButton.Size = UDim2.new(1, -30, 0, 45)
-TestButton.Position = UDim2.fromOffset(15, 60)
-TestButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-TestButton.BackgroundTransparency = 0.15
-TestButton.BorderSizePixel = 0
-TestButton.Text = "功能 1"
-TestButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-TestButton.TextSize = 16
-TestButton.Font = Enum.Font.Gotham
-TestButton.Parent = Menu
+local DragArea = Instance.new("TextButton")
+DragArea.Name = "DragArea"
 
-local TestCorner = Instance.new("UICorner")
-TestCorner.CornerRadius = UDim.new(0, 9)
-TestCorner.Parent = TestButton
+-- 覆盖标题区域
+DragArea.Size = UDim2.new(1, -50, 0, 50)
+DragArea.Position = UDim2.fromOffset(0, 0)
 
-TestButton.MouseButton1Click:Connect(function()
-	print("功能 1")
-end)
+DragArea.BackgroundTransparency = 1
+DragArea.Text = ""
+DragArea.AutoButtonColor = false
+DragArea.Active = true
+DragArea.Parent = Menu
 
 --==================================================
--- 关闭菜单按钮
+-- 关闭按钮
 --==================================================
 
 local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
 CloseButton.Size = UDim2.fromOffset(35, 35)
 CloseButton.Position = UDim2.new(1, -42, 0, 7)
 CloseButton.BackgroundTransparency = 1
 CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(255, 80, 80)
+CloseButton.TextColor3 = Color3.fromRGB(30, 30, 30)
 CloseButton.TextSize = 25
 CloseButton.Font = Enum.Font.GothamBold
+CloseButton.AutoButtonColor = false
 CloseButton.Parent = Menu
 
 CloseButton.MouseButton1Click:Connect(function()
@@ -146,48 +171,113 @@ CloseButton.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- 点击 / 拖动判断
+-- 功能按钮
 --==================================================
 
-local dragging = false
-local dragStart
-local startPosition
-local moved = false
+local TestButton = Instance.new("TextButton")
+TestButton.Name = "TestButton"
+TestButton.Size = UDim2.new(1, -30, 0, 45)
+TestButton.Position = UDim2.fromOffset(15, 65)
+
+TestButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+TestButton.BackgroundTransparency = 0
+
+TestButton.BorderSizePixel = 0
+TestButton.Text = "功能 1"
+TestButton.TextColor3 = Color3.fromRGB(25, 25, 25)
+TestButton.TextSize = 16
+TestButton.Font = Enum.Font.Gotham
+TestButton.AutoButtonColor = false
+TestButton.Parent = Menu
+
+local TestCorner = Instance.new("UICorner")
+TestCorner.CornerRadius = UDim.new(0, 9)
+TestCorner.Parent = TestButton
+
+local TestStroke = Instance.new("UIStroke")
+TestStroke.Color = Color3.fromRGB(220, 220, 220)
+TestStroke.Thickness = 1
+TestStroke.Parent = TestButton
+
+TestButton.MouseButton1Click:Connect(function()
+	print("功能 1")
+end)
+
+--==================================================
+-- 第二个示例按钮
+--==================================================
+
+local TestButton2 = Instance.new("TextButton")
+TestButton2.Name = "TestButton2"
+TestButton2.Size = UDim2.new(1, -30, 0, 45)
+TestButton2.Position = UDim2.fromOffset(15, 120)
+
+TestButton2.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+TestButton2.BackgroundTransparency = 0
+
+TestButton2.BorderSizePixel = 0
+TestButton2.Text = "功能 2"
+TestButton2.TextColor3 = Color3.fromRGB(25, 25, 25)
+TestButton2.TextSize = 16
+TestButton2.Font = Enum.Font.Gotham
+TestButton2.AutoButtonColor = false
+TestButton2.Parent = Menu
+
+local TestCorner2 = Instance.new("UICorner")
+TestCorner2.CornerRadius = UDim.new(0, 9)
+TestCorner2.Parent = TestButton2
+
+local TestStroke2 = Instance.new("UIStroke")
+TestStroke2.Color = Color3.fromRGB(220, 220, 220)
+TestStroke2.Thickness = 1
+TestStroke2.Parent = TestButton2
+
+TestButton2.MouseButton1Click:Connect(function()
+	print("功能 2")
+end)
+
+--==================================================
+-- 悬浮球拖动 / 点击
+--==================================================
+
+local buttonDragging = false
+local buttonDragStart
+local buttonStartPosition
+local buttonMoved = false
 
 AMButton.InputBegan:Connect(function(input)
 
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
-		dragging = true
-		moved = false
+		buttonDragging = true
+		buttonMoved = false
 
-		dragStart = input.Position
-		startPosition = AMButton.Position
+		buttonDragStart = input.Position
+		buttonStartPosition = AMButton.Position
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
 
-	if not dragging then
+	if not buttonDragging then
 		return
 	end
 
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseMovement then
 
-		local delta = input.Position - dragStart
+		local delta = input.Position - buttonDragStart
 
-		-- 移动超过一定距离才算拖动
 		if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
-			moved = true
+			buttonMoved = true
 		end
 
 		AMButton.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
+			buttonStartPosition.X.Scale,
+			buttonStartPosition.X.Offset + delta.X,
+			buttonStartPosition.Y.Scale,
+			buttonStartPosition.Y.Offset + delta.Y
 		)
 	end
 end)
@@ -197,11 +287,60 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
-		if dragging and not moved then
+		if buttonDragging and not buttonMoved then
 			Menu.Visible = not Menu.Visible
 		end
 
-		dragging = false
+		buttonDragging = false
+	end
+end)
+
+--==================================================
+-- 菜单拖动
+--==================================================
+
+local menuDragging = false
+local menuDragStart
+local menuStartPosition
+
+DragArea.InputBegan:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		menuDragging = true
+
+		menuDragStart = input.Position
+		menuStartPosition = Menu.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if not menuDragging then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local delta = input.Position - menuDragStart
+
+		Menu.Position = UDim2.new(
+			menuStartPosition.X.Scale,
+			menuStartPosition.X.Offset + delta.X,
+			menuStartPosition.Y.Scale,
+			menuStartPosition.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		menuDragging = false
 	end
 end)
 
